@@ -1,156 +1,255 @@
-# AetherFlow - Cloud Video Processing System
+# 🌌 AetherFlow — Cloud Video Transcoding Matrix
 
-A production-grade, containerized, cloud-ready **Video Processing System** built using modern technologies. The system allows users to upload videos, queue asynchronous transcoding jobs with various resolutions, container formats, watermarks, isolated audio extraction, and dynamic thumbnail generation, all with real-time progress tracking and seamless multi-resolution video playback.
+[![Node.js](https://img.shields.io/badge/Node.js-v18.x-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![React](https://img.shields.io/badge/React-v18.x-61DAFB?logo=react&logoColor=black)](https://react.dev/)
+[![Prisma](https://img.shields.io/badge/Prisma-Client-121214?logo=prisma&logoColor=white)](https://prisma.io)
+[![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-47A248?logo=mongodb&logoColor=white)](https://mongodb.com)
+[![Redis](https://img.shields.io/badge/Redis-Cache-DC382D?logo=redis&logoColor=white)](https://redis.io)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](https://docker.com)
+[![AWS](https://img.shields.io/badge/AWS-ECS_Fargate_/_S3-232F3E?logo=amazon-aws&logoColor=white)](https://aws.amazon.com)
+[![FFmpeg](https://img.shields.io/badge/FFmpeg-Engine-007800?logo=ffmpeg&logoColor=white)](https://ffmpeg.org)
 
----
-
-## System Architecture
-
-```
-                                      +-------------------------+
-                                      |   React SPA (Vite)      |
-                                      |   Dashboard Client      |
-                                      +------------+------------+
-                                                   ^
-                                                   | HTTP API / SSE
-                                                   v
-                                      +------------+------------+
-                                      |   Express Backend API   |
-                                      +---+------------+----+---+
-                                          |            |    |
-                            Prisma Client |            |    | Dispatch Job
-                                          v            |    v
-+-------------------------+         +-----+-----+      |  +-+--------------------+
-|                         |         |  MongoDB  |      |  |     Redis Queue      |
-|  Local Storage Vol /    |<--------|  Database |      |  |      (BullMQ)        |
-|  AWS S3 Bucket          |         +-----------+      |  +-+--------------------+
-|                         |<---------------------------+    ^
-+-------------------------+       Download/Upload Assets    | Pop & Progress
-                                                            v
-                                                  +---------+------------+
-                                                  |   FFmpeg Job Worker  |
-                                                  +----------------------+
-```
-
-1. **Frontend (Vite + React)**: Styled with premium custom Vanilla CSS Modules. Houses drag-and-drop file uploader, library grids, processing pipeline control dashboards, and a custom media player supporting resolution switching without interrupting playback.
-2. **Backend API (Express & Prisma)**: Dispatches tasks to Redis, accepts video uploads, manages metadata in MongoDB, and streams real-time status details via Server-Sent Events (SSE).
-3. **Message Broker (Redis & BullMQ)**: Provides job queues, exponential backoff retries, concurrency constraints, and thread safety.
-4. **Processing Worker (FFmpeg)**: Background consumer running on Node.js. Probes media, schedules FFmpeg commands, adds watermarks, extracts MP3 audio channels, snaps preview frames, and updates Redis with progress updates.
-5. **Storage Adaptor (Local/S3)**: Abstract service providing plug-and-play adaptability. Allows storing data in Docker volumes during development and switching to AWS S3 in production.
+A production-grade, containerized, cloud-scale **Video Processing & Transcoding System** designed with an ultra-premium Obsidian Glassmorphic dashboard. AetherFlow features direct webcam/microphone recording, remote stream URL ingestion (HLS / HTTP direct link), custom text watermarking, audio track extraction, and dynamic thumbnail generation. 
 
 ---
 
-## Directory Structure
+## 📐 System Architecture
+
+```
+                                  +------------------------------------+
+                                  |     Next-Gen React SPA Client      |
+                                  |     (Obsidian Glassmorphism UI)    |
+                                  +---+--------------+--------------+--+
+                                      ^              ^              ^
+                       Drag-Drop File |   Live WebM  |  Stream URL  | HTTP / SSE
+                             Uploads  |   Recording  |  Ingestion   | Progress
+                                      v              v              v
+                                  +---+--------------+--------------+--+
+                                  |        Express Backend API         |
+                                  +---+--------------+--------------+--+
+                                      |              |              |
+                        Prisma Client |              |              | Dispatch BullMQ Job
+                                      v              |              v
+                        +-------------+----+         |      +-------+----------+
+                        |  MongoDB Atlas   |         |      |  ElastiCache /   |
+                        |   (Data Store)   |         |      |  Redis Cluster   |
+                        +------------------+         |      +------------------+
+                                                     |               ^
+                                                     |               | Pop Task
+                                              Serve  |  Upload       v
+                                             Assets  |  Outputs +----+-------------+
+                                                     v          |                  |
+                                         +-----------+-------+  |   FFmpeg Job     |
+                                         |    AWS S3 Bucket  |<=+   Fargate Worker |
+                                         |  (Cloud Storage)  |  |                  |
+                                         +-------------------+  +------------------+
+```
+
+1. **Dashboard Client (React + Vite)**: Powered by a dark obsidian glassmorphism design system. Integrates tabbed navigation for a **Video Library**, a live **Webcam Recording Studio**, and a **Stream Import Deck**. Uses a custom media player that preserves playback timestamps during resolution switches.
+2. **Backend API (Express & Prisma)**: Ingests multipart video files, coordinates remote stream URLs, updates database structures, and handles streaming real-time queue metrics via Server-Sent Events (SSE).
+3. **Queue Broker (Redis & BullMQ)**: Manages concurrent background tasks, prevents system overload, and provides reliable worker scheduling with exponential backoff retry algorithms.
+4. **FFmpeg Job Worker**: A multi-threaded background service. Ingests local files or streams remote HLS `.m3u8` playlists directly from the network, encodes multiple resolutions/containers, embeds text watermarks, isolates audio tracks, generates snapshot thumbnails, and pipes transcoded assets to AWS S3.
+
+---
+
+## ⚡ Core Features
+
+### 🌌 Next-Gen Obsidian UI Overhaul
+- Bespoke obsidian black color palette (`#030712`) with glowing ambient highlights (radial neon gradients).
+- Blended glassmorphism cards (`rgba(17, 24, 39, 0.45)`) featuring high-contrast borders and intense backdrop filters (`blur(20px)`).
+- Collapsible sidebar menu navigation with active glow states and live processing badges.
+
+### 🎥 Webcam Recording Studio
+- Real-time enumeration of connected cameras and microphones directly in the browser.
+- Audio/video capturing via browser `MediaRecorder` API (VP9/VP8 WebM codecs).
+- Studio overlays including flashing `REC` indicators, monospaced countdown timers, and recording feedback loop.
+- Local playback review player, custom metadata forms (title/description), and automated multi-part upload pipeline.
+
+### 🔗 Stream URL Ingest & Transcoding
+- Supports public HTTP files (`.mp4`, `.webm`) and Apple HTTP Live Streaming (`.m3u8`) playlists.
+- Ingestion checks MIME types (`application/x-mpegURL` for streams) and bypasses storage overhead.
+- Background worker feeds remote stream URLs straight into FFmpeg inputs, decoding from network packets.
+- Graceful metadata fallbacks for live feeds without predefined durations, skipping thumbnail extraction.
+
+---
+
+## 📁 Directory Structure
 
 ```
 d:\VIDEO PROCESSING SYSTEM\
-├── backend/                  # API server code (Express, TypeScript, Prisma)
-│   ├── prisma/               # Database schemas
+├── backend/                  # REST API Server (Express + TypeScript + Prisma)
+│   ├── prisma/               # Database client schemas
 │   ├── src/
-│   │   ├── config/           # DB, Storage adapters, Queue connections
-│   │   ├── routes/           # REST endpoints
-│   │   └── server.ts         # App initialization
+│   │   ├── config/           # DB, Storage drivers, Redis connections
+│   │   ├── routes/           # Video endpoints & SSE stream handlers
+│   │   └── server.ts         # Server bootstrapping
 │   └── Dockerfile
-├── worker/                   # Processing worker code (BullMQ, FFmpeg)
-│   ├── prisma/               # Database client schema
+├── worker/                   # Processing Worker (BullMQ + FFmpeg)
+│   ├── prisma/               # Worker database models
 │   ├── src/
-│   │   ├── config/           # DB and Storage adapters
-│   │   ├── processor.ts      # FFmpeg command builder and progress reporter
-│   │   └── index.ts          # BullMQ queue runner loop
+│   │   ├── config/           # DB & S3 configurations
+│   │   ├── processor.ts      # Stream detector, FFmpeg wrapper, thumbnailer
+│   │   └── index.ts          # BullMQ queue listener
 │   └── Dockerfile
-├── frontend/                 # Frontend dashboard (React, Vite, Vanilla CSS)
+├── frontend/                 # Client SPA Dashboard (React + Vite + Vanilla CSS)
 │   ├── src/
-│   │   ├── components/       # Custom Video Player Modal
-│   │   ├── App.jsx           # Main Dashboard
-│   │   ├── index.css         # Theme stylesheet
+│   │   ├── components/       # Custom player with resolution selectors
+│   │   ├── App.jsx           # Sidebar layout, webcam booth & stream import
+│   │   ├── index.css         # Glassmorphic Obsidian design tokens
 │   │   └── main.jsx
 │   ├── index.html
 │   ├── vite.config.js
 │   └── Dockerfile
-└── docker-compose.yml        # Multi-service setup config
+└── docker-compose.yml        # Multi-service local setup orchestration
 ```
 
 ---
 
-## Local Setup & Running
+## ⚙️ Local Setup & Orchestration
 
-### Requirements
-- **Docker** and **Docker Compose** installed on your system.
+### Prerequisites
+- **Docker** and **Docker Compose** installed.
+- Camera and microphone access permissions (if testing local Webcam Recorder).
 
-### Quick Start
-To spin up the entire cluster (MongoDB, Redis, API, Worker, Frontend) with a single command, run this at the project root:
+### Build and Launch
+Build the Docker environment and spin up all local services (MongoDB, Redis, API, Worker, Client) with one command from the project root:
 
 ```bash
 docker-compose up --build
 ```
 
-The services will initialize:
-* **Frontend Dashboard**: [http://localhost:3000](http://localhost:3000)
-* **Backend API Server**: [http://localhost:5000](http://localhost:5000)
-* **MongoDB**: `localhost:27017`
-* **Redis**: `localhost:6379`
+- **Web Dashboard**: [http://localhost:3000](http://localhost:3000)
+- **API Server**: [http://localhost:5000](http://localhost:5000)
+- **Local MongoDB**: `localhost:27017`
+- **Local Redis**: `localhost:6379`
 
-### Shared Volume
-By default, the storage adapter is set to `local`. All uploads and processed files will be written to a shared Docker volume mapped inside `/app/uploads` in both the backend and worker containers. This maps to the Docker volume `shared_uploads` on your machine.
-
----
-
-## Production AWS S3 Deployment Configuration
-
-To deploy this system to the cloud using AWS S3 for storage:
-
-1. Update the environment variables in your container setups:
-   ```env
-   STORAGE_TYPE=s3
-   AWS_REGION=us-east-1
-   AWS_S3_BUCKET=your-production-bucket-name
-   AWS_ACCESS_KEY_ID=your-aws-access-key-id
-   AWS_SECRET_ACCESS_KEY=your-aws-secret-access-key
-   ```
-2. The `StorageService` factory will automatically switch to the AWS S3 Client SDK. Original uploads and processed assets (resolutions, thumbnails, audio) will be stored in S3 and served using standard public URLs.
+> [!NOTE]
+> In local development mode (`STORAGE_TYPE=local`), a shared volume `shared_uploads` is mounted at `/app/uploads` across backend and worker containers to simulate cloud storage blocks locally.
 
 ---
 
-## Backend API Documentation
+## 🚀 AWS Fargate Cloud Production Setup
 
-### Videos API
+To deploy the API and Worker containers to AWS ECS Fargate and leverage AWS S3 for storage, configure the following variables in your `.env.production` file:
 
-#### 1. Upload Original Video
-* **Endpoint**: `POST /api/videos/upload`
-* **Body (Multipart/Form-Data)**:
-  * `video`: Binary File (max 500MB)
-  * `title`: String (Optional, defaults to filename)
-  * `description`: String (Optional)
-* **Response**: Returns the created `Video` metadata object (status `UPLOADED`).
+```env
+# Database & Broker
+DATABASE_URL="mongodb+srv://<user>:<password>@cluster0.mongodb.net/aetherflow"
+REDIS_URL="rediss://<elasticache-redis-tls-endpoint>:6379"
 
-#### 2. Get Video Library
-* **Endpoint**: `GET /api/videos`
-* **Response**: Returns a JSON array containing all uploaded videos and their associated processed assets, sorted by newest first.
+# Storage Configuration
+STORAGE_TYPE="s3"
+AWS_REGION="eu-north-1"
+AWS_S3_BUCKET="aetherflow-assets"
+AWS_ACCESS_KEY_ID="AKIAxxxxxxxxxxxx"
+AWS_SECRET_ACCESS_KEY="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+```
 
-#### 3. Get Video Detail
-* **Endpoint**: `GET /api/videos/:id`
-* **Response**: Returns detailed metadata for a single video. If the video is still processing, includes the live BullMQ progress percentage.
+> [!IMPORTANT]
+> - **ElastiCache Transit Encryption**: Secure Redis connections on AWS require `rediss://` protocol configurations to prevent socket timeouts.
+> - **ECR Workflows**: Pipeline repository creators use `aws ecr create-repository --repository-name $ECR_REPOSITORY || true` checks to prevent rolling workflow crashes.
 
-#### 4. Submit Transcoding Job
-* **Endpoint**: `POST /api/videos/:id/process`
-* **Headers**: `Content-Type: application/json`
-* **Body**:
+---
+
+## 🔌 API Reference Document
+
+### Videos Ingestion
+
+#### 1. Direct Multipart Video Upload
+- **Endpoint**: `POST /api/videos/upload`
+- **Content-Type**: `multipart/form-data`
+- **Fields**:
+  - `video` (file binary): The video asset (max 500MB).
+  - `title` (string): Optional title.
+  - `description` (string): Optional description.
+- **Response** (Status `201 Created`):
+  ```json
+  {
+    "id": "603dcae32c81d31a54b9d09a",
+    "title": "AetherFlow Introduction",
+    "description": "Cloud system demo",
+    "originalName": "intro.mp4",
+    "mimeType": "video/mp4",
+    "size": 12459023,
+    "duration": null,
+    "originalPath": "originals/1709483829102-intro.mp4",
+    "streamUrl": null,
+    "status": "UPLOADED",
+    "progress": 0
+  }
+  ```
+
+#### 2. Import Remote HLS/HTTP Stream
+- **Endpoint**: `POST /api/videos/import-url`
+- **Content-Type**: `application/json`
+- **Body**:
+  ```json
+  {
+    "url": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+    "title": "Bigger Blazes Network Stream",
+    "description": "Public sample HTTP stream"
+  }
+  ```
+- **Response** (Status `201 Created`):
+  ```json
+  {
+    "id": "603dcae32c81d31a54b9d09b",
+    "title": "Bigger Blazes Network Stream",
+    "description": "Public sample HTTP stream",
+    "originalName": "Network Stream",
+    "mimeType": "video/mp4",
+    "size": 0,
+    "duration": null,
+    "originalPath": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+    "streamUrl": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+    "status": "UPLOADED",
+    "progress": 0
+  }
+  ```
+
+---
+
+### Job Orchestration
+
+#### 3. Submit Transcoding Job
+- **Endpoint**: `POST /api/videos/:id/process`
+- **Content-Type**: `application/json`
+- **Body**:
   ```json
   {
     "resolutions": ["1080p", "720p", "480p"],
     "formats": ["mp4", "webm"],
-    "watermarkText": "CONFIDENTIAL",
+    "watermarkText": "AETHERFLOW INTERNAL",
     "extractAudio": true,
     "thumbnailsCount": 3
   }
   ```
-* **Response**: Returns confirmation message with status `QUEUED`.
+- **Response** (Status `200 OK`):
+  ```json
+  {
+    "message": "Video added to processing queue",
+    "status": "QUEUED"
+  }
+  ```
 
-#### 5. Real-Time Progress Stream (SSE)
-* **Endpoint**: `GET /api/videos/:id/progress-stream`
-* **Format**: Server-Sent Events (stream)
-* **Output**: Periodically streams `{ status, progress, error, assets }` JSON updates every 1 second. Connection is automatically closed once status updates to `COMPLETED` or `FAILED`.
+#### 4. Real-Time SSE Progress Stream
+- **Endpoint**: `GET /api/videos/:id/progress-stream`
+- **Content-Type**: `text/event-stream`
+- **Response**: Streams SSE messages every 1 second updating the transcoding state:
+  ```json
+  {
+    "status": "PROCESSING",
+    "progress": 42,
+    "error": null,
+    "assets": []
+  }
+  ```
+  *Streams close automatically upon transition to `COMPLETED` or `FAILED`.*
+
+#### 5. Get Video Library
+- **Endpoint**: `GET /api/videos`
+- **Response** (Status `200 OK`): Returns JSON array of all video metadata objects along with their mapped output resolution asset keys.
 
 #### 6. Delete Video and Assets
-* **Endpoint**: `DELETE /api/videos/:id`
-* **Response**: Cancels any active queue items, deletes files from local/S3 storage, removes DB record, and returns confirmation.
+- **Endpoint**: `DELETE /api/videos/:id`
+- **Response** (Status `200 OK`): Cancels active jobs in Redis, purges all stored S3 artifacts (resolutions, audio, thumbnails) and deletes references in MongoDB.
