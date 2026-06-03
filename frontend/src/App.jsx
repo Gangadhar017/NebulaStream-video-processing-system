@@ -774,6 +774,22 @@ export default function App() {
   const totalVideos = videos.length;
   const processingCount = videos.filter(v => v.status === 'PROCESSING' || v.status === 'QUEUED').length;
   const completedCount = videos.filter(v => v.status === 'COMPLETED').length;
+  const failedCount = videos.filter(v => v.status === 'FAILED').length;
+
+  // Real S3 space consumed by original files + processed output assets
+  const totalS3Size = videos.reduce((sum, v) => {
+    const originalSize = v.size || 0;
+    const assetsSize = v.assets ? v.assets.reduce((aSum, asset) => aSum + (asset.size || 0), 0) : 0;
+    return sum + originalSize + assetsSize;
+  }, 0);
+
+  const estimatedS3Cost = ((totalS3Size / (1024 * 1024 * 1024)) * 0.023).toFixed(2);
+  
+  // Real success rate calculated safely
+  const processedJobsCount = totalVideos - processingCount;
+  const successRate = processedJobsCount > 0 
+    ? ((completedCount / processedJobsCount) * 100).toFixed(1) 
+    : '100.0';
 
   const totalOriginalSize = videos.reduce((sum, v) => sum + (v.size || 0), 0);
   const activeJobsList = videos.filter(v => v.status === 'QUEUED' || v.status === 'PROCESSING');
@@ -1175,8 +1191,8 @@ export default function App() {
                       <span>Total Videos</span>
                       <Film size={14} style={{ color: 'var(--color-primary)' }} />
                     </div>
-                    <div className="metric-card-value">{totalVideos > 0 ? `${totalVideos} assets` : '1.42M'}</div>
-                    <div className="metric-card-sub positive">↑ +12% 24h</div>
+                    <div className="metric-card-value">{totalVideos} assets</div>
+                    <div className="metric-card-sub positive">{completedCount} transcoded</div>
                   </div>
 
                   <div className="metric-card">
@@ -1184,9 +1200,9 @@ export default function App() {
                       <span>Processing Jobs</span>
                       <Loader2 size={14} className={processingCount > 0 ? 'animate-spin' : ''} style={{ color: 'var(--color-secondary)' }} />
                     </div>
-                    <div className="metric-card-value">{processingCount > 0 ? `${processingCount} active` : '4,892'}</div>
+                    <div className="metric-card-value">{processingCount} active</div>
                     <div className="mini-progress-track">
-                      <div className="mini-progress-fill" style={{ width: processingCount > 0 ? '75%' : '45%' }}></div>
+                      <div className="mini-progress-fill" style={{ width: processingCount > 0 ? '100%' : '0%' }}></div>
                     </div>
                   </div>
 
@@ -1195,8 +1211,10 @@ export default function App() {
                       <span>S3 Consumption</span>
                       <Database size={14} style={{ color: 'var(--color-warning)' }} />
                     </div>
-                    <div className="metric-card-value">{totalOriginalSize > 0 ? formatBytes(totalOriginalSize) : '84.2 TB'}</div>
-                    <div className="metric-card-sub" style={{ color: 'var(--color-text-muted)' }}>$1,240 est. / mo</div>
+                    <div className="metric-card-value">{formatBytes(totalS3Size)}</div>
+                    <div className="metric-card-sub" style={{ color: 'var(--color-text-muted)' }}>
+                      ${estimatedS3Cost} est. / mo
+                    </div>
                   </div>
 
                   <div className="metric-card">
@@ -1204,8 +1222,10 @@ export default function App() {
                       <span>Queue Status</span>
                       <Clock size={14} style={{ color: 'var(--color-danger)' }} />
                     </div>
-                    <div className="metric-card-value">{processingCount > 0 ? 'ENGAGED' : '12.4k'}</div>
-                    <div className="metric-card-sub negative">{processingCount > 0 ? 'Active threads running' : 'Elevated load'}</div>
+                    <div className="metric-card-value">{processingCount > 0 ? 'RUNNING' : 'IDLE'}</div>
+                    <div className="metric-card-sub negative">
+                      {processingCount > 0 ? 'Processing jobs in queue' : 'Awaiting stream/file ingestion'}
+                    </div>
                   </div>
 
                   <div className="metric-card">
@@ -1213,10 +1233,10 @@ export default function App() {
                       <span>Success Rate</span>
                       <CheckCircle size={14} style={{ color: 'var(--color-success)' }} />
                     </div>
-                    <div className="metric-card-value">
-                      {totalVideos > 0 ? `${((completedCount / totalVideos) * 100).toFixed(1)}%` : '99.98%'}
+                    <div className="metric-card-value">{successRate}%</div>
+                    <div className="metric-card-sub" style={{ color: 'var(--color-text-muted)' }}>
+                      {failedCount} pipeline errors
                     </div>
-                    <div className="metric-card-sub" style={{ color: 'var(--color-text-muted)' }}>Last 7 days</div>
                   </div>
 
                   <div className="metric-card">
@@ -1224,8 +1244,10 @@ export default function App() {
                       <span>Active Workers</span>
                       <Activity size={14} style={{ color: 'var(--color-primary)' }} />
                     </div>
-                    <div className="metric-card-value">842</div>
-                    <div className="metric-card-sub positive">Autoscaling active</div>
+                    <div className="metric-card-value">{processingCount > 0 ? Math.min(4, processingCount) : 0} nodes</div>
+                    <div className="metric-card-sub positive">
+                      {processingCount > 0 ? 'Parallel scaling active' : 'Fargate clusters standby'}
+                    </div>
                   </div>
                 </div>
 
@@ -1311,51 +1333,21 @@ export default function App() {
                           </tr>
                         ))}
 
-                        {/* Fallback mocks if queue is empty */}
+                        {/* Fallback empty state if queue is empty */}
                         {activeJobsList.length === 0 && (
-                          <>
-                            <tr>
-                              <td className="job-id-cell">#JOB-8921a</td>
-                              <td style={{ fontWeight: 600 }}>raw_footage_cam1_1080p.mxf</td>
-                              <td>HLS-Adaptive-4K</td>
-                              <td>
-                                <div className="progress-cell-wrapper">
-                                  <div className="progress-bar-bg" style={{ width: '80px', height: '4px' }}>
-                                    <div className="progress-bar-fill" style={{ width: '45%' }}></div>
-                                  </div>
-                                  <span className="progress-pct-value">45%</span>
-                                </div>
-                              </td>
-                              <td>
-                                <span className="status-badge processing">
-                                  <span className="status-badge-dot"></span>
-                                  Processing
+                          <tr>
+                            <td colSpan="6" style={{ textAlign: 'center', padding: '3.5rem 1rem', color: 'var(--color-text-muted)' }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.65rem' }}>
+                                <Activity size={32} style={{ opacity: 0.3, color: 'var(--color-secondary)' }} />
+                                <span style={{ fontWeight: 700, color: '#fff', fontSize: '0.9rem' }}>
+                                  No Active Ingestion or Transcoding Jobs Running
                                 </span>
-                              </td>
-                              <td style={{ fontFamily: 'monospace' }}>02:14</td>
-                            </tr>
-
-                            <tr>
-                              <td className="job-id-cell">#JOB-8920b</td>
-                              <td style={{ fontWeight: 600 }}>interview_audio_sync_v2.mov</td>
-                              <td>MP4-WebM-1080p</td>
-                              <td>
-                                <div className="progress-cell-wrapper">
-                                  <div className="progress-bar-bg" style={{ width: '80px', height: '4px' }}>
-                                    <div className="progress-bar-fill" style={{ width: '100%', background: 'var(--color-success)' }}></div>
-                                  </div>
-                                  <span className="progress-pct-value">100%</span>
-                                </div>
-                              </td>
-                              <td>
-                                <span className="status-badge success">
-                                  <span className="status-badge-dot"></span>
-                                  Success
+                                <span style={{ fontSize: '0.78rem', maxWidth: '400px', lineHeight: 1.4 }}>
+                                  Start a webcam studio recording, import a network live stream URL, or upload a project file to launch real-time pipeline transcoding telemetry.
                                 </span>
-                              </td>
-                              <td style={{ fontFamily: 'monospace' }}>04:32</td>
-                            </tr>
-                          </>
+                              </div>
+                            </td>
+                          </tr>
                         )}
                       </tbody>
                     </table>
