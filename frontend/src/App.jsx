@@ -3,7 +3,7 @@ import {
   Upload, Film, Loader2, Play, Trash2, Settings, 
   RefreshCw, CheckCircle, AlertCircle, Clock, Database, 
   BarChart, Sparkles, Video, Volume2, Image, Layers, ArrowRight,
-  HelpCircle, Activity, DollarSign, Terminal, Plus, ShieldCheck, Search, SlidersHorizontal, Eye, Lock, Mail, UserPlus, LogIn, LogOut
+  HelpCircle, Activity, DollarSign, Terminal, Plus, ShieldCheck, Search, SlidersHorizontal, Eye, Lock, Mail, UserPlus, LogIn, LogOut, Pause, Camera, X
 } from 'lucide-react';
 import VideoPlayerModal from './components/VideoPlayerModal';
 
@@ -30,6 +30,9 @@ export default function App() {
   // Main Dashboard active tab
   const [activeTab, setActiveTab] = useState('dashboard');
   
+  // New Project Ingestion Modal State
+  const [showNewProjectModal, setShowNewProjectModal] = useState(false);
+
   // Videos Library database states
   const [videos, setVideos] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -62,7 +65,7 @@ export default function App() {
     frameInterpolation: true
   });
 
-  // Webcam States
+  // Webcam & Teleprompter Studio States (Studios Tab)
   const [devices, setDevices] = useState({ video: [], audio: [] });
   const [selectedVideoDevice, setSelectedVideoDevice] = useState('');
   const [selectedAudioDevice, setSelectedAudioDevice] = useState('');
@@ -72,8 +75,22 @@ export default function App() {
   const [mediaRecorder, setMediaRecorder] = useState(null);
   const [recordingPreviewUrl, setRecordingPreviewUrl] = useState(null);
   const [recordedBlob, setRecordedBlob] = useState(null);
+  
+  // Teleprompter specific options
+  const [teleprompterScript, setTeleprompterScript] = useState(
+    `Welcome to the AetherFlow Studio.\n\nThis professional teleprompter overlay helps you deliver your message with precision while maintaining eye contact with your audience. Adjust your script, speed, and font size in the sidebar settings.`
+  );
+  const [isTeleprompterPlaying, setIsTeleprompterPlaying] = useState(false);
+  const [teleprompterSpeed, setTeleprompterSpeed] = useState(4.5);
+  const [teleprompterFontSize, setTeleprompterFontSize] = useState(32);
+  const [showScriptEditor, setShowScriptEditor] = useState(false);
+  const [recordingQuality, setRecordingQuality] = useState('4k'); // '4k' | '1080p'
+  const [autoUploadS3, setAutoUploadS3] = useState(true);
   const [webcamTitle, setWebcamTitle] = useState('Webcam Capture');
-  const [webcamDescription, setWebcamDescription] = useState('');
+  const [webcamDescription, setWebcamDescription] = useState('Recorded live using the AetherFlow teleprompter booth.');
+
+  // Audio level meter bars state
+  const [audioBars, setAudioBars] = useState([4, 8, 12, 10, 6]);
 
   // Stream URL Import States
   const [streamUrl, setStreamUrl] = useState('');
@@ -89,6 +106,7 @@ export default function App() {
 
   const connectedIds = useRef(new Set());
   const fileInputRef = useRef(null);
+  const modalFileInputRef = useRef(null);
   const webcamVideoRef = useRef(null);
 
   // Fetch all videos
@@ -158,23 +176,24 @@ export default function App() {
     });
   }, [videos, currentView]);
 
-  // Clean camera feed on leaving webcam view
+  // Handle webcam tab init and cleanups
   useEffect(() => {
-    if (currentView === 'console' && activeTab === 'webcam') {
+    if (currentView === 'console' && activeTab === 'studios') {
       initWebcamTab();
     } else {
       stopCameraFeed();
+      setIsTeleprompterPlaying(false);
     }
   }, [activeTab, currentView]);
 
-  // Auto restart camera feed when devices choice changes
+  // Auto restart camera feed when active devices change
   useEffect(() => {
-    if (cameraStream && activeTab === 'webcam' && currentView === 'console') {
+    if (cameraStream && activeTab === 'studios' && currentView === 'console') {
       startCameraFeed();
     }
   }, [selectedVideoDevice, selectedAudioDevice]);
 
-  // Record timer increment
+  // Recording timer increment
   useEffect(() => {
     let interval = null;
     if (isRecording) {
@@ -188,6 +207,50 @@ export default function App() {
       if (interval) clearInterval(interval);
     };
   }, [isRecording]);
+
+  // Simulated Mic volume visualizer jump state
+  useEffect(() => {
+    let timer = null;
+    if (cameraStream && activeTab === 'studios') {
+      timer = setInterval(() => {
+        setAudioBars(Array.from({ length: 5 }, () => Math.floor(Math.random() * 16) + 4));
+      }, 150);
+    } else {
+      setAudioBars([4, 4, 4, 4, 4]);
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [cameraStream, activeTab]);
+
+  // Teleprompter scrolling animator
+  useEffect(() => {
+    let animationFrameId;
+    let lastTime = performance.now();
+    
+    const scrollLoop = (time) => {
+      const scrollBox = document.getElementById('teleprompter-scroll-box');
+      if (isTeleprompterPlaying && scrollBox) {
+        const elapsed = time - lastTime;
+        const speedValue = parseFloat(teleprompterSpeed) || 1;
+        scrollBox.scrollTop += (speedValue * elapsed * 0.02);
+        
+        // Loop back to top if reached end of content
+        if (scrollBox.scrollTop >= scrollBox.scrollHeight - scrollBox.clientHeight) {
+          scrollBox.scrollTop = 0;
+        }
+      }
+      lastTime = time;
+      animationFrameId = requestAnimationFrame(scrollLoop);
+    };
+
+    if (isTeleprompterPlaying) {
+      animationFrameId = requestAnimationFrame(scrollLoop);
+    }
+    return () => {
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
+    };
+  }, [isTeleprompterPlaying, teleprompterSpeed]);
 
   // Generate simulated FFmpeg logs periodically in Ops Tab
   useEffect(() => {
@@ -241,7 +304,6 @@ export default function App() {
 
     setAuthLoading(true);
 
-    // Simulate database lookup / generation delay
     setTimeout(() => {
       localStorage.setItem('aether_session', 'active');
       localStorage.setItem('aether_email', authEmail);
@@ -339,11 +401,22 @@ export default function App() {
       const blob = new Blob(chunks, { type: 'video/webm' });
       setRecordedBlob(blob);
       setRecordingPreviewUrl(URL.createObjectURL(blob));
+
+      // Trigger automatic upload if checked in settings
+      if (autoUploadS3) {
+        const file = new File(
+          [blob], 
+          `teleprompter-clip-${Date.now()}.webm`, 
+          { type: 'video/webm' }
+        );
+        handleFileUpload(file, webcamTitle, webcamDescription);
+      }
     };
 
     recorder.start(1000);
     setMediaRecorder(recorder);
     setIsRecording(true);
+    setIsTeleprompterPlaying(true); // Auto play teleprompter on start record!
   };
 
   // Stop Media Recording
@@ -351,27 +424,26 @@ export default function App() {
     if (mediaRecorder && isRecording) {
       mediaRecorder.stop();
       setIsRecording(false);
+      setIsTeleprompterPlaying(false);
     }
   };
 
-  // Submit Webcam Recording Upload
-  const handleUploadWebcam = () => {
-    if (!recordedBlob) return;
-    
-    const file = new File(
-      [recordedBlob], 
-      `webcam-record-${Date.now()}.webm`, 
-      { type: 'video/webm' }
-    );
-    
-    handleFileUpload(file, webcamTitle, webcamDescription);
-    
-    // Reset webcam form fields
-    setRecordedBlob(null);
-    setRecordingPreviewUrl(null);
-    setWebcamTitle('Webcam Capture');
-    setWebcamDescription('');
-    stopCameraFeed();
+  // Snapshot PNG local download
+  const handleTakeSnapshot = () => {
+    if (webcamVideoRef.current && cameraStream) {
+      const canvas = document.createElement('canvas');
+      canvas.width = webcamVideoRef.current.videoWidth || 640;
+      canvas.height = webcamVideoRef.current.videoHeight || 480;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(webcamVideoRef.current, 0, 0, canvas.width, canvas.height);
+      
+      const link = document.createElement('a');
+      link.download = `snap-${Date.now()}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    } else {
+      alert('Start the camera feed first to capture a snapshot.');
+    }
   };
 
   // Submit Stream URL Import
@@ -403,7 +475,7 @@ export default function App() {
         setStreamUrl('');
         setStreamTitle('');
         setStreamDescription('');
-        setActiveTab('studios'); // Switch to Studios for transcode
+        setShowNewProjectModal(true); // Open the configure transcode project modal!
       } else {
         const errData = await res.json();
         alert(errData.error || 'Failed to import stream URL');
@@ -455,7 +527,9 @@ export default function App() {
           internalTitle: newVideo.title,
           descriptionNotes: newVideo.description || ''
         }));
-        setActiveTab('studios');
+        
+        // Open the Ingestion config modal
+        setShowNewProjectModal(true);
       } else {
         alert('Upload failed: ' + xhr.responseText);
       }
@@ -536,6 +610,7 @@ export default function App() {
           return v;
         }));
         setSelectedVideoForConfig(null);
+        setShowNewProjectModal(false); // Close modal
         setActiveTab('dashboard'); // Redirect to live Active Jobs list
       } else {
         const errData = await res.json();
@@ -850,16 +925,8 @@ export default function App() {
                   className={`menu-item ${activeTab === 'studios' ? 'active' : ''}`}
                   onClick={() => setActiveTab('studios')}
                 >
-                  <Settings size={16} />
-                  <span>Studios</span>
-                </button>
-
-                <button 
-                  className={`menu-item ${activeTab === 'webcam' ? 'active' : ''}`}
-                  onClick={() => setActiveTab('webcam')}
-                >
                   <Video size={16} />
-                  <span>Webcam Studio</span>
+                  <span>Studios</span>
                 </button>
 
                 <button 
@@ -896,8 +963,25 @@ export default function App() {
             </div>
 
             <div className="sidebar-footer-deck">
-              <button className="upgrade-storage-btn" onClick={() => alert('Autoscaling nodes are configured directly in the Ops panel!')}>
-                Upgrade Storage
+              <button 
+                className="upgrade-storage-btn" 
+                onClick={() => {
+                  setSelectedVideoForConfig(null);
+                  setJobSettings({
+                    resolutions: ['720p', '480p'],
+                    formats: ['mp4'],
+                    watermarkText: 'AETHERFLOW',
+                    extractAudio: true,
+                    thumbnailsCount: 3,
+                    internalTitle: '',
+                    descriptionNotes: '',
+                    autoColorGrading: false,
+                    frameInterpolation: true
+                  });
+                  setShowNewProjectModal(true);
+                }}
+              >
+                + New Project
               </button>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', borderTop: '1px solid var(--border-color)', paddingTop: '0.75rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem', padding: '0 0.5rem', color: 'var(--color-text-muted)', textOverflow: 'ellipsis', overflow: 'hidden' }}>
@@ -925,10 +1009,30 @@ export default function App() {
                 <span className="indicator-item" style={{ color: 'var(--color-text-muted)' }}>
                   Nodes: <strong style={{ color: '#fff' }}>42/48</strong>
                 </span>
+                <span className="indicator-item" style={{ color: 'var(--color-secondary)' }}>
+                  AetherFlow Studio v4.2
+                </span>
               </div>
 
               <div className="topbar-actions-deck">
-                <button className="btn-action-primary" onClick={() => setActiveTab('studios')}>
+                <button 
+                  className="btn-action-primary" 
+                  onClick={() => {
+                    setSelectedVideoForConfig(null);
+                    setJobSettings({
+                      resolutions: ['720p', '480p'],
+                      formats: ['mp4'],
+                      watermarkText: 'AETHERFLOW',
+                      extractAudio: true,
+                      thumbnailsCount: 3,
+                      internalTitle: '',
+                      descriptionNotes: '',
+                      autoColorGrading: false,
+                      frameInterpolation: true
+                    });
+                    setShowNewProjectModal(true);
+                  }}
+                >
                   <Plus size={14} style={{ marginRight: '0.25rem', verticalAlign: 'text-bottom' }} /> New Project
                 </button>
               </div>
@@ -1268,7 +1372,7 @@ export default function App() {
                                             internalTitle: video.title,
                                             descriptionNotes: video.description || ''
                                           }));
-                                          setActiveTab('studios');
+                                          setShowNewProjectModal(true);
                                         }}
                                       >
                                         Configure
@@ -1301,206 +1405,306 @@ export default function App() {
               </>
             )}
 
-            {/* 3. Studios Ingestion & Transcoding Configurations (Screenshot 3 Layout) */}
+            {/* 3. Studios Tab: Webcam Studio with Teleprompter (MATCHING USER SCREENSHOT) */}
             {activeTab === 'studios' && (
               <>
                 <div>
-                  <h1 style={{ fontSize: '2rem', fontWeight: 800 }}>Upload & Transcode Studio</h1>
+                  <h1 style={{ fontSize: '2rem', fontWeight: 800 }}>Webcam Studio with Teleprompter</h1>
                   <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
-                    Configure ingestion parameters and initialize transcoder workers for the AetherFlow cluster.
+                    Deliver high-impact video scripts directly to S3 with active audio visualizers and real-time hardware settings.
                   </p>
                 </div>
 
-                <div className="studio-split-layout">
-                  <div 
-                    className={`drag-drop-card-panel ${dragActive ? 'drag-active' : ''}`}
-                    onDragEnter={handleDrag}
-                    onDragOver={handleDrag}
-                    onDragLeave={handleDrag}
-                    onDrop={handleDrop}
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    <input 
-                      type="file" 
-                      ref={fileInputRef} 
-                      style={{ display: 'none' }} 
-                      accept="video/*"
-                      onChange={(e) => handleFileUpload(e.target.files?.[0])}
-                      disabled={uploading}
-                    />
-                    <div className="studio-upload-icon-box">
-                      {uploading ? <Loader2 size={24} className="animate-spin" /> : <Upload size={24} />}
-                    </div>
-                    
-                    {uploading ? (
-                      <div style={{ textAlign: 'center', width: '100%' }}>
-                        <h3 style={{ fontWeight: 600, color: '#fff' }}>Ingesting Media Asset...</h3>
-                        <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginTop: '0.25rem' }}>
-                          {uploadingFile?.name} ({formatBytes(uploadingFile?.size)})
-                        </p>
-                        <div className="upload-progress-container" style={{ width: '80%', margin: '1rem auto 0' }}>
-                          <div className="progress-bar-bg">
-                            <div className="progress-bar-fill animated" style={{ width: `${uploadProgress}%` }}></div>
+                <div className="studio-tab-layout">
+                  {/* Left Column: Live camera viewport & scrolling teleprompter */}
+                  <div>
+                    <div className="studio-viewport-wrapper">
+                      {recordingPreviewUrl ? (
+                        <video src={recordingPreviewUrl} controls className="studio-viewport-video" />
+                      ) : cameraStream ? (
+                        <video ref={webcamVideoRef} autoPlay muted playsInline className="studio-viewport-video" />
+                      ) : (
+                        <div className="webcam-placeholder">
+                          <div className="webcam-placeholder-icon">
+                            <Video size={36} />
                           </div>
-                          <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--color-primary)', marginTop: '0.5rem', display: 'block' }}>
-                            {uploadProgress}%
-                          </span>
+                          <h3>Live Feed Offline</h3>
+                          <p>Enable the camera feed from the hardware settings panel to begin.</p>
+                        </div>
+                      )}
+
+                      {/* Top badges bar */}
+                      <div className="studio-viewport-overlay-top">
+                        <div className="studio-rec-badge">
+                          <span className={`studio-rec-dot ${isRecording ? 'active' : ''}`}></span>
+                          <span>{isRecording ? `REC ${formatTimer(recordingSeconds)}` : 'STDBY'}</span>
+                        </div>
+                        <div className="studio-stream-meta-badge">
+                          {recordingQuality === '4k' ? '4K • 60 FPS • 48kHz' : '1080p • 60 FPS • 44.1kHz'}
                         </div>
                       </div>
-                    ) : (
-                      <div style={{ textAlign: 'center' }}>
-                        <h3 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#fff' }}>Drag & Drop Media</h3>
-                        <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', marginTop: '0.25rem' }}>
-                          or <span style={{ color: 'var(--color-primary)', fontWeight: 600 }}>browse local files</span>
-                        </p>
-                        <div className="studio-format-chips-row">
-                          <span className="format-chip-item">.MP4</span>
-                          <span className="format-chip-item">.MOV</span>
-                          <span className="format-chip-item">.RAW</span>
-                          <span className="format-chip-item">MAX 500MB</span>
+
+                      {/* Dynamic scrolling teleprompter text overlay */}
+                      {!recordingPreviewUrl && cameraStream && (
+                        <div className="studio-teleprompter-overlay">
+                          <div className="studio-teleprompter-scroll-box" id="teleprompter-scroll-box">
+                            <div className="studio-teleprompter-text" style={{ fontSize: `${teleprompterFontSize}px` }}>
+                              {teleprompterScript}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Audio visualizer jumps */}
+                      {cameraStream && !recordingPreviewUrl && (
+                        <div className="studio-audio-wave-viz">
+                          {audioBars.map((level, i) => (
+                            <div 
+                              key={i} 
+                              className="audio-wave-bar animated" 
+                              style={{ 
+                                height: `${level * 1.25}px`,
+                                animationDelay: `${i * 0.15}s`
+                              }}
+                            />
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Viewport overlay controls bottom deck */}
+                      <div className="studio-viewport-controls-bottom">
+                        <div className="studio-control-deck-row">
+                          <button 
+                            className="studio-deck-btn"
+                            onClick={() => {
+                              if (isRecording) {
+                                handleStopRecording();
+                              } else {
+                                handleStartRecording();
+                              }
+                            }}
+                            title={isRecording ? 'Stop Session' : 'Record Session'}
+                          >
+                            <span className={`studio-rec-dot ${isRecording ? 'active' : ''}`} style={{ width: '12px', height: '12px', display: 'block', margin: '0 auto 0.25rem' }}></span>
+                            <span>{isRecording ? 'STOP' : 'RECORD'}</span>
+                          </button>
+
+                          <button 
+                            className="studio-deck-btn"
+                            onClick={() => {
+                              if (cameraStream) {
+                                stopCameraFeed();
+                              } else {
+                                startCameraFeed();
+                              }
+                            }}
+                            title={cameraStream ? 'Turn Camera Off' : 'Turn Camera On'}
+                          >
+                            <Video size={16} style={{ display: 'block', margin: '0 auto 0.25rem' }} />
+                            <span>{cameraStream ? 'MUTED' : 'CAMERA'}</span>
+                          </button>
+
+                          <button 
+                            className="studio-deck-btn"
+                            onClick={handleTakeSnapshot}
+                            title="Capture Snapshot Image"
+                          >
+                            <Camera size={16} style={{ display: 'block', margin: '0 auto 0.25rem' }} />
+                            <span>SNAPSHOT</span>
+                          </button>
                         </div>
                       </div>
-                    )}
+                    </div>
                   </div>
 
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                    
-                    <div className="section-card">
-                      <span className="section-card-title">
-                        <Film size={16} /> Asset Metadata
-                      </span>
-                      
-                      <div className="form-group">
-                        <label>Internal Title</label>
-                        <input 
-                          type="text" 
-                          className="text-input" 
-                          value={jobSettings.internalTitle} 
-                          onChange={(e) => setJobSettings(prev => ({ ...prev, internalTitle: e.target.value }))}
-                          placeholder="e.g. Q3 Marketing Campaign Hero"
-                        />
+                  {/* Right Column: Hardware settings & teleprompter parameters */}
+                  <div className="section-card hardware-settings-panel">
+                    <div>
+                      <h3 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#fff' }}>Hardware Settings</h3>
+                      <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.15rem' }}>Configure inputs and quality profile</p>
+                    </div>
+
+                    <div className="hardware-input-deck">
+                      {/* Camera source selector */}
+                      <div className="device-select-wrapper">
+                        <label>Camera Source</label>
+                        <select 
+                          className="select-input"
+                          value={selectedVideoDevice}
+                          onChange={(e) => setSelectedVideoDevice(e.target.value)}
+                          disabled={isRecording}
+                        >
+                          {devices.video.length === 0 ? (
+                            <option value="">Logitech Brio 4K Stream Edition</option>
+                          ) : (
+                            devices.video.map(dev => (
+                              <option key={dev.deviceId} value={dev.deviceId}>{dev.label || `Camera Source`}</option>
+                            ))
+                          )}
+                        </select>
                       </div>
 
-                      <div className="form-group">
-                        <label>Description / Notes</label>
-                        <textarea 
-                          className="textarea-input" 
-                          value={jobSettings.descriptionNotes}
-                          onChange={(e) => setJobSettings(prev => ({ ...prev, descriptionNotes: e.target.value }))}
-                          placeholder="Optional context for operators..."
-                        />
+                      {/* Microphone source selector */}
+                      <div className="device-select-wrapper">
+                        <label>Audio Input</label>
+                        <select 
+                          className="select-input"
+                          value={selectedAudioDevice}
+                          onChange={(e) => setSelectedAudioDevice(e.target.value)}
+                          disabled={isRecording}
+                        >
+                          {devices.audio.length === 0 ? (
+                            <option value="">Shure MV7 - USB Microphone</option>
+                          ) : (
+                            devices.audio.map(dev => (
+                              <option key={dev.deviceId} value={dev.deviceId}>{dev.label || `Audio Input`}</option>
+                            ))
+                          )}
+                        </select>
+                        {/* Audio level meter cyan bar */}
+                        <div className="mini-progress-track" style={{ height: '3px', marginTop: '0.35rem' }}>
+                          <div 
+                            className="mini-progress-fill" 
+                            style={{ 
+                              width: cameraStream ? '45%' : '0%', 
+                              background: 'var(--color-secondary)',
+                              transition: 'width 0.1s ease'
+                            }}
+                          ></div>
+                        </div>
                       </div>
                     </div>
 
-                    <div className="section-card">
-                      <span className="section-card-title">
-                        <Settings size={16} /> Processing Profile
-                      </span>
-
-                      <div className="form-group">
-                        <label>Target Resolutions</label>
-                        <div className="checkbox-group">
-                          {['1080p', '720p', '480p'].map(res => (
-                            <div 
-                              key={res} 
-                              className={`checkbox-card ${jobSettings.resolutions.includes(res) ? 'selected' : ''}`}
-                              onClick={() => toggleResolution(res)}
-                            >
-                              <input 
-                                type="checkbox" 
-                                checked={jobSettings.resolutions.includes(res)}
-                                onChange={() => {}}
-                              />
-                              <span className="checkbox-label">{res}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="form-group">
-                        <label>Output Container</label>
-                        <div className="checkbox-group">
-                          {['mp4', 'webm'].map(fmt => (
-                            <div 
-                              key={fmt} 
-                              className={`checkbox-card ${jobSettings.formats.includes(fmt) ? 'selected' : ''}`}
-                              onClick={() => toggleFormat(fmt)}
-                            >
-                              <input 
-                                type="checkbox" 
-                                checked={jobSettings.formats.includes(fmt)}
-                                onChange={() => {}}
-                              />
-                              <span className="checkbox-label">{fmt.toUpperCase()}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="form-group">
-                        <label>Overlay Burn-in (Watermark)</label>
-                        <div style={{ display: 'flex', gap: '0.5rem' }}>
-                          <input 
-                            type="text" 
-                            className="text-input" 
-                            value={jobSettings.watermarkText}
-                            onChange={(e) => setJobSettings(prev => ({ ...prev, watermarkText: e.target.value }))}
-                            placeholder="e.g. CONFIDENTIAL - INTERNAL USE ONLY"
-                          />
-                          <button className="btn-action-secondary" onClick={() => alert('Watermark is automatically aligned on top-left overlay.')}>Position</button>
-                        </div>
-                      </div>
-
-                      <div className="form-group">
-                        <label>AI Enhancements</label>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                          <div className={`ai-enhancement-card-wrapper ${jobSettings.autoColorGrading ? 'selected' : ''}`}>
-                            <div className="ai-details-text">
-                              <h4>Auto-Color Grading</h4>
-                              <p>Neural matching to AetherFlow cinematic preset</p>
-                            </div>
-                            <label className="toggle-switch-wrapper">
-                              <input 
-                                type="checkbox" 
-                                checked={jobSettings.autoColorGrading}
-                                onChange={(e) => setJobSettings(prev => ({ ...prev, autoColorGrading: e.target.checked }))}
-                              />
-                              <span className="toggle-slider"></span>
-                            </label>
-                          </div>
-
-                          <div className={`ai-enhancement-card-wrapper ${jobSettings.frameInterpolation ? 'selected' : ''}`}>
-                            <div className="ai-details-text">
-                              <h4>Frame Interpolation</h4>
-                              <p>Smooth video playback up to 60fps</p>
-                            </div>
-                            <label className="toggle-switch-wrapper">
-                              <input 
-                                type="checkbox" 
-                                checked={jobSettings.frameInterpolation}
-                                onChange={(e) => setJobSettings(prev => ({ ...prev, frameInterpolation: e.target.checked }))}
-                              />
-                              <span className="toggle-slider"></span>
-                            </label>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="studio-actions-footer">
-                        <button className="btn-action-secondary" onClick={() => {
-                          setSelectedVideoForConfig(null);
-                          alert('Configurations saved as draft.');
-                        }}>
-                          Save as Draft
-                        </button>
+                    {/* Teleprompter scripting */}
+                    <div className="teleprompter-controls-deck">
+                      <div className="teleprompter-action-row">
+                        <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#fff' }}>Teleprompter</span>
                         <button 
-                          className="btn-action-primary"
-                          onClick={handleStartProcessing}
-                          disabled={!selectedVideoForConfig}
+                          className="teleprompter-link-btn"
+                          onClick={() => setShowScriptEditor(!showScriptEditor)}
                         >
-                          <Sparkles size={14} style={{ marginRight: '0.25rem', verticalAlign: 'text-bottom' }} /> Initialize Processing
+                          {showScriptEditor ? 'CLOSE EDITOR' : 'SCRIPT EDITOR'}
                         </button>
                       </div>
+
+                      {showScriptEditor ? (
+                        <textarea 
+                          className="textarea-input"
+                          style={{ minHeight: '100px', fontSize: '0.8rem' }}
+                          value={teleprompterScript}
+                          onChange={(e) => setTeleprompterScript(e.target.value)}
+                          placeholder="Type or paste your teleprompter script here..."
+                        />
+                      ) : (
+                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                          <button 
+                            className={`teleprompter-play-btn ${isTeleprompterPlaying ? 'playing' : ''}`}
+                            onClick={() => setIsTeleprompterPlaying(!isTeleprompterPlaying)}
+                            disabled={!cameraStream || recordingPreviewUrl}
+                          >
+                            {isTeleprompterPlaying ? <Pause size={12} /> : <Play size={12} />}
+                            <span>{isTeleprompterPlaying ? 'Pause' : 'Play Script'}</span>
+                          </button>
+                          <button 
+                            className="btn-action-secondary"
+                            style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}
+                            onClick={() => {
+                              const box = document.getElementById('teleprompter-scroll-box');
+                              if (box) box.scrollTop = 0;
+                            }}
+                          >
+                            Reset
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Speed Slider */}
+                      <div className="teleprompter-slider-row" style={{ marginTop: '0.25rem' }}>
+                        <label>Speed</label>
+                        <input 
+                          type="range"
+                          min="1"
+                          max="10"
+                          step="0.5"
+                          className="teleprompter-range-slider"
+                          value={teleprompterSpeed}
+                          onChange={(e) => setTeleprompterSpeed(parseFloat(e.target.value))}
+                        />
+                        <span style={{ width: '30px', textAlign: 'right' }}>{teleprompterSpeed}x</span>
+                      </div>
+
+                      {/* Font size slider */}
+                      <div className="teleprompter-slider-row">
+                        <label>Font Size</label>
+                        <input 
+                          type="range"
+                          min="16"
+                          max="64"
+                          className="teleprompter-range-slider"
+                          value={teleprompterFontSize}
+                          onChange={(e) => setTeleprompterFontSize(parseInt(e.target.value))}
+                        />
+                        <span style={{ width: '35px', textAlign: 'right' }}>{teleprompterFontSize}px</span>
+                      </div>
+                    </div>
+
+                    {/* Recording Quality Profile Cards */}
+                    <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
+                      <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--color-text-muted)', display: 'block', marginBottom: '0.5rem' }}>
+                        Recording Quality
+                      </label>
+                      <div className="quality-deck">
+                        <div 
+                          className={`quality-choice-card ${recordingQuality === '4k' ? 'selected' : ''}`}
+                          onClick={() => setRecordingQuality('4k')}
+                        >
+                          <div className="quality-card-desc">
+                            <h4>4K (2160p)</h4>
+                            <p>60fps - 45 Mbps - HEVC</p>
+                          </div>
+                          <div className="quality-card-check-circle">
+                            {recordingQuality === '4k' && <span style={{ width: '6px', height: '6px', background: '#fff', borderRadius: '50%' }}></span>}
+                          </div>
+                        </div>
+
+                        <div 
+                          className={`quality-choice-card ${recordingQuality === '1080p' ? 'selected' : ''}`}
+                          onClick={() => setRecordingQuality('1080p')}
+                        >
+                          <div className="quality-card-desc">
+                            <h4>1080p (Full HD)</h4>
+                            <p>60fps - 12 Mbps - H.264</p>
+                          </div>
+                          <div className="quality-card-check-circle">
+                            {recordingQuality === '1080p' && <span style={{ width: '6px', height: '6px', background: '#fff', borderRadius: '50%' }}></span>}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Auto-upload to S3 Toggle Switch */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
+                      <div>
+                        <h4 style={{ fontSize: '0.85rem', fontWeight: 700, color: '#fff' }}>Auto-upload to S3</h4>
+                        <p style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', marginTop: '0.15rem' }}>Upload immediately after stopping</p>
+                      </div>
+                      <label className="toggle-switch-wrapper">
+                        <input 
+                          type="checkbox" 
+                          checked={autoUploadS3}
+                          onChange={(e) => setAutoUploadS3(e.target.checked)}
+                        />
+                        <span className="toggle-slider"></span>
+                      </label>
+                    </div>
+
+                    {/* Advanced AV1 Encoding display tag */}
+                    <div className="advanced-encoding-box">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <SlidersHorizontal size={14} style={{ color: 'var(--color-primary)' }} />
+                        <span>Advanced Encoding</span>
+                      </div>
+                      <span style={{ fontSize: '0.7rem', color: 'var(--color-primary)' }}>Hardware Accelerated (AV1)</span>
                     </div>
 
                   </div>
@@ -1508,155 +1712,7 @@ export default function App() {
               </>
             )}
 
-            {/* 4. Live Webcam Recording Booth */}
-            {activeTab === 'webcam' && (
-              <div className="webcam-tab-container panel">
-                <div className="webcam-booth">
-                  <div>
-                    <div className="webcam-viewport-wrapper">
-                      {recordingPreviewUrl ? (
-                        <video src={recordingPreviewUrl} controls className="webcam-video" />
-                      ) : cameraStream ? (
-                        <video ref={webcamVideoRef} autoPlay muted playsInline className="webcam-video" />
-                      ) : (
-                        <div className="webcam-placeholder">
-                          <div className="webcam-placeholder-icon">
-                            <Video size={36} />
-                          </div>
-                          <h3>Live Feed Offline</h3>
-                          <p>Enable the camera stream using the controls panel to get started.</p>
-                        </div>
-                      )}
-
-                      {isRecording && (
-                        <>
-                          <div className="webcam-overlay">
-                            <span className="rec-dot active"></span>
-                            <span>REC</span>
-                          </div>
-                          <div className="webcam-timer">{formatTimer(recordingSeconds)}</div>
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="webcam-controls-panel">
-                    <h3 className="panel-title" style={{ borderLeftColor: 'var(--color-danger)' }}>
-                      Recording Studio Control
-                    </h3>
-
-                    {!isRecording && !recordingPreviewUrl && (
-                      <div className="devices-deck">
-                        <div className="device-select-wrapper">
-                          <label>Video Input Source</label>
-                          <select 
-                            className="select-input"
-                            value={selectedVideoDevice}
-                            onChange={(e) => setSelectedVideoDevice(e.target.value)}
-                          >
-                            {devices.video.length === 0 ? (
-                              <option value="">No Camera Found</option>
-                            ) : (
-                              devices.video.map(dev => (
-                                <option key={dev.deviceId} value={dev.deviceId}>{dev.label || `Camera ${dev.deviceId.slice(0, 5)}`}</option>
-                              ))
-                            )}
-                          </select>
-                        </div>
-
-                        <div className="device-select-wrapper">
-                          <label>Microphone Source</label>
-                          <select 
-                            className="select-input"
-                            value={selectedAudioDevice}
-                            onChange={(e) => setSelectedAudioDevice(e.target.value)}
-                          >
-                            {devices.audio.length === 0 ? (
-                              <option value="">No Microphone Found</option>
-                            ) : (
-                              devices.audio.map(dev => (
-                                <option key={dev.deviceId} value={dev.deviceId}>{dev.label || `Mic ${dev.deviceId.slice(0, 5)}`}</option>
-                              ))
-                            )}
-                          </select>
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="webcam-btn-deck">
-                      {!cameraStream && !recordingPreviewUrl && (
-                        <button className="btn-webcam-action start-stream" onClick={startCameraFeed}>
-                          <Video size={18} />
-                          <span>Start Camera Feed</span>
-                        </button>
-                      )}
-
-                      {cameraStream && !isRecording && !recordingPreviewUrl && (
-                        <>
-                          <button className="btn-webcam-action record-trigger" onClick={handleStartRecording}>
-                            <Play size={18} />
-                            <span>Start Recording</span>
-                          </button>
-                          <button className="btn-webcam-action stop-stream" onClick={stopCameraFeed}>
-                            <span>Disable Camera</span>
-                          </button>
-                        </>
-                      )}
-
-                      {isRecording && (
-                        <button className="btn-webcam-action record-trigger recording" onClick={handleStopRecording}>
-                          <Clock size={18} className="animate-spin" />
-                          <span>Stop Recording ({formatTimer(recordingSeconds)})</span>
-                        </button>
-                      )}
-                    </div>
-
-                    {recordingPreviewUrl && (
-                      <div style={{ marginTop: '1rem', borderTop: '1px solid var(--border-color)', paddingTop: '1.5rem' }}>
-                        <h4 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '1rem', color: '#fff' }}>
-                          Review & Upload recorded clip
-                        </h4>
-                        
-                        <div className="form-group">
-                          <label>Video Title</label>
-                          <input 
-                            type="text" 
-                            className="text-input" 
-                            value={webcamTitle} 
-                            onChange={(e) => setWebcamTitle(e.target.value)}
-                          />
-                        </div>
-
-                        <div className="form-group">
-                          <label>Video Description</label>
-                          <textarea 
-                            className="textarea-input"
-                            value={webcamDescription}
-                            onChange={(e) => setWebcamDescription(e.target.value)}
-                          />
-                        </div>
-
-                        <div style={{ display: 'flex', gap: '0.75rem' }}>
-                          <button className="btn-primary" onClick={handleUploadWebcam}>
-                            <Upload size={16} />
-                            <span>Upload to Library</span>
-                          </button>
-                          <button className="btn-refresh" onClick={() => {
-                            setRecordingPreviewUrl(null);
-                            setRecordedBlob(null);
-                            startCameraFeed();
-                          }}>
-                            <span>Discard</span>
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* 5. Stream URL Import Tab */}
+            {/* 4. Stream URL Import Tab */}
             {activeTab === 'import' && (
               <div className="import-stream-container panel">
                 <h3 className="panel-title" style={{ borderLeftColor: 'var(--color-secondary)' }}>
@@ -1728,7 +1784,7 @@ export default function App() {
               </div>
             )}
 
-            {/* 6. Operations Telemetry & Console Tab (Screenshot 2 Layout) */}
+            {/* 5. Operations Telemetry & Console Tab (Screenshot 2 Layout) */}
             {activeTab === 'ops' && (
               <>
                 <div>
@@ -1844,7 +1900,7 @@ export default function App() {
               </>
             )}
 
-            {/* 7. Enterprise placeholders for settings, billing, jobs, analytics */}
+            {/* 6. Enterprise placeholders for settings, billing, jobs, analytics */}
             {['jobs', 'analytics', 'settings', 'billing'].includes(activeTab) && (
               <div className="panel" style={{ textAlign: 'center', padding: '5rem 2rem' }}>
                 <Activity size={48} style={{ margin: '0 auto 1.5rem', color: 'var(--color-primary)', opacity: 0.8 }} />
@@ -1857,13 +1913,200 @@ export default function App() {
 
           </main>
 
-          {/* Watch Resolution Switching Modal Overlay */}
+          {/* WATCH/PLAY MODAL OVERLAY */}
           {playingVideo && (
             <VideoPlayerModal 
               video={playingVideo} 
               onClose={() => setPlayingVideo(null)} 
             />
           )}
+
+          {/* NEW PROJECT INGESTION MODAL OVERLAY */}
+          {showNewProjectModal && (
+            <div className="modal-overlay">
+              <div className="project-ingestion-card panel" style={{ animation: 'slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)', position: 'relative' }}>
+                
+                {/* Close modal X button */}
+                <button 
+                  className="close-btn" 
+                  style={{ position: 'absolute', right: '1.25rem', top: '1.25rem', background: 'rgba(255,255,255,0.03)', borderRadius: '50%', padding: '0.45rem' }}
+                  onClick={() => setShowNewProjectModal(false)}
+                >
+                  <X size={16} />
+                </button>
+
+                <h3 className="panel-title" style={{ marginBottom: '1.5rem' }}>
+                  <Plus size={18} /> Ingest & Transcode Project
+                </h3>
+
+                <div className="studio-split-layout">
+                  {/* Left Side: Drag & Drop Ingestion */}
+                  <div 
+                    className={`drag-drop-card-panel ${dragActive ? 'drag-active' : ''}`}
+                    style={{ height: '340px' }}
+                    onDragEnter={handleDrag}
+                    onDragOver={handleDrag}
+                    onDragLeave={handleDrag}
+                    onDrop={handleDrop}
+                    onClick={() => modalFileInputRef.current?.click()}
+                  >
+                    <input 
+                      type="file" 
+                      ref={modalFileInputRef} 
+                      style={{ display: 'none' }} 
+                      accept="video/*"
+                      onChange={(e) => handleFileUpload(e.target.files?.[0])}
+                      disabled={uploading}
+                    />
+                    <div className="studio-upload-icon-box">
+                      {uploading ? <Loader2 size={24} className="animate-spin" /> : <Upload size={24} />}
+                    </div>
+                    
+                    {uploading ? (
+                      <div style={{ textAlign: 'center', width: '100%' }}>
+                        <h4 style={{ color: '#fff', fontWeight: 600 }}>Streaming video to cloud...</h4>
+                        <div className="upload-progress-container" style={{ width: '80%', margin: '1rem auto 0' }}>
+                          <div className="progress-bar-bg">
+                            <div className="progress-bar-fill animated" style={{ width: `${uploadProgress}%` }}></div>
+                          </div>
+                          <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--color-primary)', marginTop: '0.5rem', display: 'block' }}>
+                            {uploadProgress}%
+                          </span>
+                        </div>
+                      </div>
+                    ) : selectedVideoForConfig ? (
+                      <div style={{ textAlign: 'center' }}>
+                        <CheckCircle size={36} style={{ color: 'var(--color-success)', margin: '0 auto 0.5rem' }} />
+                        <h4 style={{ color: '#fff', fontWeight: 700 }}>Asset Ingested</h4>
+                        <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.25rem' }}>
+                          {selectedVideoForConfig.title}
+                        </p>
+                        <span style={{ color: 'var(--color-primary)', fontSize: '0.75rem', cursor: 'pointer', display: 'block', marginTop: '0.75rem', fontWeight: 600 }}>
+                          Replace file
+                        </span>
+                      </div>
+                    ) : (
+                      <div style={{ textAlign: 'center' }}>
+                        <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#fff' }}>Drag & Drop Master Video</h3>
+                        <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginTop: '0.25rem' }}>
+                          or <span style={{ color: 'var(--color-primary)', fontWeight: 600 }}>browse files</span>
+                        </p>
+                        <div className="studio-format-chips-row">
+                          <span className="format-chip-item">.MP4</span>
+                          <span className="format-chip-item">.MOV</span>
+                          <span className="format-chip-item">MAX 500MB</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Right Side: Configurations */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                    
+                    {/* Metadata */}
+                    <div className="form-group">
+                      <label>Internal Title</label>
+                      <input 
+                        type="text" 
+                        className="text-input" 
+                        value={jobSettings.internalTitle} 
+                        onChange={(e) => setJobSettings(prev => ({ ...prev, internalTitle: e.target.value }))}
+                        placeholder="e.g. Q3 Marketing Campaign Hero"
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <label>Target Resolutions</label>
+                      <div className="checkbox-group" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+                        {['1080p', '720p', '480p'].map(res => (
+                          <div 
+                            key={res} 
+                            className={`checkbox-card ${jobSettings.resolutions.includes(res) ? 'selected' : ''}`}
+                            onClick={() => toggleResolution(res)}
+                          >
+                            <input 
+                              type="checkbox" 
+                              checked={jobSettings.resolutions.includes(res)}
+                              onChange={() => {}}
+                            />
+                            <span className="checkbox-label" style={{ fontSize: '0.78rem' }}>{res}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="form-group">
+                      <label>Output Containers</label>
+                      <div className="checkbox-group">
+                        {['mp4', 'webm'].map(fmt => (
+                          <div 
+                            key={fmt} 
+                            className={`checkbox-card ${jobSettings.formats.includes(fmt) ? 'selected' : ''}`}
+                            onClick={() => toggleFormat(fmt)}
+                          >
+                            <input 
+                              type="checkbox" 
+                              checked={jobSettings.formats.includes(fmt)}
+                              onChange={() => {}}
+                            />
+                            <span className="checkbox-label" style={{ fontSize: '0.78rem' }}>{fmt.toUpperCase()}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="form-group">
+                      <label>Watermark Burn-in Text</label>
+                      <input 
+                        type="text" 
+                        className="text-input" 
+                        value={jobSettings.watermarkText}
+                        onChange={(e) => setJobSettings(prev => ({ ...prev, watermarkText: e.target.value }))}
+                        placeholder="CONFIDENTIAL"
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        <div 
+                          className={`checkbox-card ${jobSettings.extractAudio ? 'selected' : ''}`}
+                          onClick={() => setJobSettings(prev => ({ ...prev, extractAudio: !prev.extractAudio }))}
+                        >
+                          <input 
+                            type="checkbox" 
+                            checked={jobSettings.extractAudio} 
+                            onChange={() => {}}
+                          />
+                          <Volume2 size={14} style={{ color: 'var(--color-warning)' }} />
+                          <span className="checkbox-label" style={{ fontSize: '0.78rem' }}>Extract MP3 Audio track</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
+                      <button 
+                        className="btn-action-primary"
+                        style={{ flex: 1 }}
+                        onClick={handleStartProcessing}
+                        disabled={!selectedVideoForConfig}
+                      >
+                        <Sparkles size={14} style={{ marginRight: '0.25rem', verticalAlign: 'text-bottom' }} /> Initialize Processing
+                      </button>
+                      <button 
+                        className="btn-action-secondary"
+                        onClick={() => setShowNewProjectModal(false)}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          )}
+
         </div>
       )}
     </>

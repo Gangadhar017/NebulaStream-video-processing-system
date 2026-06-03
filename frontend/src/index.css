@@ -1235,3 +1235,380 @@ input:checked + .toggle-slider:before {
   opacity: 0.95;
   box-shadow: var(--shadow-neon);
 }
+
+/* WEBCAM STUDIO SPECIFIC STYLING (MATCHING TELEPROMPTER SCREENSHOT) */
+.studio-tab-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+@media (min-width: 992px) {
+  .studio-tab-layout {
+    grid-template-columns: 1.4fr 1fr;
+  }
+}
+
+.studio-viewport-wrapper {
+  background: #020308;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  aspect-ratio: 16/10;
+  position: relative;
+  overflow: hidden;
+  box-shadow: var(--shadow-md);
+}
+
+.studio-viewport-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.studio-viewport-overlay-top {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  right: 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  z-index: 10;
+}
+
+.studio-rec-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: rgba(0, 0, 0, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.studio-rec-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-danger);
+  box-shadow: 0 0 6px var(--color-danger);
+}
+
+.studio-rec-dot.active {
+  animation: rec-blink 1s steps(2, start) infinite;
+}
+
+.studio-stream-meta-badge {
+  background: rgba(0, 0, 0, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--color-secondary);
+}
+
+/* Scrolling Teleprompter overlay content */
+.studio-teleprompter-overlay {
+  position: absolute;
+  top: 4rem;
+  left: 2rem;
+  right: 2rem;
+  bottom: 6rem;
+  overflow-y: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.studio-teleprompter-scroll-box {
+  width: 100%;
+  max-height: 100%;
+  overflow-y: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  mask-image: linear-gradient(to bottom, transparent 0%, #fff 15%, #fff 85%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #fff 15%, #fff 85%, transparent 100%);
+}
+
+.studio-teleprompter-text {
+  color: #fff;
+  font-weight: 800;
+  line-height: 1.5;
+  text-align: center;
+  width: 90%;
+  padding: 2rem 0;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.95);
+  white-space: pre-wrap;
+  transition: font-size 0.2s ease;
+}
+
+/* Bottom studio controls deck */
+.studio-viewport-controls-bottom {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.9) 0%, transparent 100%);
+  padding: 1.5rem;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 10;
+}
+
+.studio-control-deck-row {
+  background: rgba(12, 16, 31, 0.85);
+  border: 1px solid var(--border-color);
+  padding: 0.5rem 1.25rem;
+  border-radius: 30px;
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  box-shadow: var(--shadow-md);
+  backdrop-filter: blur(10px);
+}
+
+.studio-deck-btn {
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  font-family: var(--font-family);
+  font-size: 0.65rem;
+  font-weight: 700;
+  transition: var(--transition);
+  padding: 0.25rem 0.5rem;
+  border-radius: 8px;
+}
+
+.studio-deck-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.studio-deck-btn.record-btn-trigger {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: #ef4444;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 15px rgba(239, 68, 68, 0.4);
+}
+
+.studio-deck-btn.record-btn-trigger:hover {
+  background: #dc2626;
+  transform: scale(1.05);
+}
+
+.studio-deck-btn.record-btn-trigger.active {
+  background: #fff;
+  color: #000;
+  box-shadow: 0 0 15px rgba(255, 255, 255, 0.6);
+}
+
+/* Wave visualizer */
+.studio-audio-wave-viz {
+  position: absolute;
+  bottom: 1.25rem;
+  right: 1.5rem;
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 20px;
+  z-index: 10;
+}
+
+.audio-wave-bar {
+  width: 3px;
+  background: var(--color-secondary);
+  border-radius: 3px;
+  min-height: 4px;
+}
+
+.audio-wave-bar.animated {
+  animation: jump-bar 0.8s ease-in-out infinite alternate;
+}
+
+@keyframes jump-bar {
+  0% { height: 4px; }
+  100% { height: 20px; }
+}
+
+/* Settings panel styling */
+.hardware-settings-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.hardware-input-deck {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.teleprompter-controls-deck {
+  border-top: 1px solid var(--border-color);
+  padding-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.teleprompter-action-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.teleprompter-play-btn {
+  background: #fff;
+  border: none;
+  color: #000;
+  padding: 0.45rem 1rem;
+  border-radius: 4px;
+  font-family: var(--font-family);
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  transition: var(--transition);
+}
+
+.teleprompter-play-btn:hover {
+  background: #e2e8f0;
+}
+
+.teleprompter-play-btn.playing {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  border: 1px solid var(--border-color);
+}
+
+.teleprompter-link-btn {
+  background: none;
+  border: none;
+  color: var(--color-primary);
+  font-family: var(--font-family);
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.teleprompter-slider-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+}
+
+.teleprompter-slider-row label {
+  font-weight: 600;
+}
+
+.teleprompter-range-slider {
+  flex: 1;
+  margin-left: 1rem;
+  margin-right: 0.5rem;
+  accent-color: var(--color-primary);
+  height: 4px;
+  cursor: pointer;
+}
+
+/* Recording quality cards */
+.quality-deck {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.quality-choice-card {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 0.85rem;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: var(--transition);
+}
+
+.quality-choice-card:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.quality-choice-card.selected {
+  border-color: var(--color-primary);
+  background: rgba(139, 92, 246, 0.04);
+}
+
+.quality-card-desc h4 {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.quality-card-desc p {
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+  margin-top: 0.15rem;
+}
+
+.quality-card-check-circle {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.quality-choice-card.selected .quality-card-check-circle {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+}
+
+.advanced-encoding-box {
+  background: rgba(255, 255, 255, 0.01);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 0.75rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+/* MODAL CONTAINER OVERLAYS FOR FILE TRANSLATING OR UPLOADING */
+.project-ingestion-card {
+  background: #090a12;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  max-width: 850px;
+  width: 100%;
+}
