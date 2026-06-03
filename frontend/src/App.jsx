@@ -6,6 +6,8 @@ import {
 } from 'lucide-react';
 import VideoPlayerModal from './components/VideoPlayerModal';
 
+const API_BASE = import.meta.env.VITE_API_URL || '';
+
 export default function App() {
   const [videos, setVideos] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -35,7 +37,7 @@ export default function App() {
   // Fetch all videos
   const fetchVideos = async () => {
     try {
-      const res = await fetch('/api/videos');
+      const res = await fetch(`${API_BASE}/api/videos`);
       const data = await res.json();
       if (Array.isArray(data)) {
         setVideos(data);
@@ -59,7 +61,7 @@ export default function App() {
       if (connectedIds.current.has(job.id)) return;
 
       connectedIds.current.add(job.id);
-      const es = new EventSource(`/api/videos/${job.id}/progress-stream`);
+      const es = new EventSource(`${API_BASE}/api/videos/${job.id}/progress-stream`);
       
       es.onmessage = (event) => {
         try {
@@ -113,7 +115,7 @@ export default function App() {
     formData.append('video', file);
 
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', '/api/videos/upload', true);
+    xhr.open('POST', `${API_BASE}/api/videos/upload`, true);
 
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable) {
@@ -170,7 +172,7 @@ export default function App() {
     if (!confirm('Are you sure you want to delete this video and all processed files?')) return;
     
     try {
-      const res = await fetch(`/api/videos/${id}`, { method: 'DELETE' });
+      const res = await fetch(`${API_BASE}/api/videos/${id}`, { method: 'DELETE' });
       if (res.ok) {
         setVideos(prev => prev.filter(v => v.id !== id));
         if (selectedVideoForConfig?.id === id) {
@@ -187,7 +189,7 @@ export default function App() {
     if (!selectedVideoForConfig) return;
 
     try {
-      const res = await fetch(`/api/videos/${selectedVideoForConfig.id}/process`, {
+      const res = await fetch(`${API_BASE}/api/videos/${selectedVideoForConfig.id}/process`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(jobSettings)

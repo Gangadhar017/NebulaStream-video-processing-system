@@ -11,7 +11,11 @@ export default function VideoPlayerModal({ video, onClose }) {
   
   // Set up resolution choices
   // Include original video as a choice
-  const originalUrl = `/uploads/${video.originalPath}`;
+  const API_BASE = import.meta.env.VITE_API_URL || '';
+  const originalUrl = video.originalPath.startsWith('http') 
+    ? video.originalPath 
+    : `${API_BASE}/uploads/${video.originalPath}`;
+    
   const initialResolutions = [
     { label: 'Original', url: originalUrl, id: 'original', format: video.mimeType.split('/')[1] || 'mp4', size: video.size }
   ];
