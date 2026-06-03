@@ -253,3 +253,58 @@ AWS_SECRET_ACCESS_KEY="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
 #### 6. Delete Video and Assets
 - **Endpoint**: `DELETE /api/videos/:id`
 - **Response** (Status `200 OK`): Cancels active jobs in Redis, purges all stored S3 artifacts (resolutions, audio, thumbnails) and deletes references in MongoDB.
+
+---
+
+## 🎓 Online Examination Proctoring Integration Blueprint
+
+This section provides an architectural blueprint for integrating live, automated recording and processing of webcam streams of students taking examinations online.
+
+### 1. Frontend: Headless Proctoring Recording
+Integrate a background recording component on the exam page that manages permissions, chunk uploads, and browser events:
+* **Background Chunking**: Periodically record and save the stream to disk or memory, uploading chunks every 2–3 minutes via standard multipart requests or directly to S3 via presigned URLs. This protects recordings from internet drops or browser crashes.
+* **Cheating Event Logs**: Attach event listeners for `visibilitychange` (tab switches), `resize` (leaving fullscreen mode), and audio activity to construct a side-channel time-log of flagged events.
+
+### 2. Database Schema Extension
+Extend the `schema.prisma` models to track the audit timeline:
+```prisma
+model ExamRecording {
+  id           String        @id @default(auto()) @map("_id") @db.ObjectId
+  studentId    String
+  examId       String
+  videoUrl     String?
+  status       String        // UPLOADED | PROCESSING | COMPLETED | FAILED
+  createdAt    DateTime      @default(now())
+  flags        ProctorFlag[]
+  snapshots    AuditSnapshot[]
+}
+
+model ProctorFlag {
+  id              String        @id @default(auto()) @map("_id") @db.ObjectId
+  examRecordingId String        @db.ObjectId
+  examRecording   ExamRecording @relation(fields: [examRecordingId], references: [id], onDelete: Cascade)
+  timestamp       Int           // Elapsed seconds in video
+  eventType       String        // TAB_SWITCH | FULLSCREEN_EXIT | NO_FACE_DETECTED
+  severity        String        // LOW | MEDIUM | HIGH
+}
+
+model AuditSnapshot {
+  id              String        @id @default(auto()) @map("_id") @db.ObjectId
+  examRecordingId String        @db.ObjectId
+  examRecording   ExamRecording @relation(fields: [examRecordingId], references: [id], onDelete: Cascade)
+  timestamp       Int
+  imageUrl        String
+}
+```
+
+### 3. Background Transcoding & Auditing (FFmpeg Worker)
+* **Visual Proctor Watermark**: Use the FFmpeg `drawtext` filter to burn in student metadata, IP address, and absolute UTC timestamps for anti-tamper compliance.
+* **Audit Frame Extraction**: Configure the worker to automatically extract review snapshots (e.g. 1 frame every 10 seconds) to feed downline facial-verification models or proctor review timelines:
+  ```bash
+  ffmpeg -i input.mp4 -vf "fps=1/10" -q:v 2 audit_snapshots/thumb_%04d.jpg
+  ```
+* **Storage Preservation**: Run high-efficiency transcoding pipelines (e.g. 480p H.264 at a low constant rate factor like `crf 28`) to archive hour-long exams with minimal S3 footprint.
+
+### 4. Admin Proctor Review Portal
+* Build an admin audit board displaying flagged students, logs, and a timeline of snapshots.
+* Build a custom review player that syncs the video playback time directly with the flagged cheating event timestamps, allowing proctors to jump straight to suspect intervals.
