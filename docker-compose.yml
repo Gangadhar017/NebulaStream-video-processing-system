@@ -1,0 +1,77 @@
+version: '3.8'
+
+services:
+  db:
+    image: mongo:6.0
+    container_name: video-db
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    restart: unless-stopped
+    command: mongod --bind_ip_all
+
+  redis:
+    image: redis:7-alpine
+    container_name: video-queue-cache
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: video-api
+    ports:
+      - "5000:5000"
+    environment:
+      - PORT=5000
+      - DATABASE_URL=mongodb://db:27017/videoprocessing?directConnection=true
+      - REDIS_URL=redis://redis:6379
+      - STORAGE_TYPE=local
+      - UPLOAD_DIR=/app/uploads
+      - CLIENT_URL=http://localhost:3000
+    volumes:
+      - shared_uploads:/app/uploads
+    depends_on:
+      - db
+      - redis
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+    container_name: video-worker
+    environment:
+      - DATABASE_URL=mongodb://db:27017/videoprocessing?directConnection=true
+      - REDIS_URL=redis://redis:6379
+      - STORAGE_TYPE=local
+      - UPLOAD_DIR=/app/uploads
+    volumes:
+      - shared_uploads:/app/uploads
+    depends_on:
+      - db
+      - redis
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: video-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - VITE_API_URL=http://localhost:5000
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  mongodb_data:
+  redis_data:
+  shared_uploads:

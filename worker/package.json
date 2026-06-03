@@ -1,0 +1,28 @@
+{
+  "name": "video-processing-worker",
+  "version": "1.0.0",
+  "description": "Background video processor for Cloud Video Processing System",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc && prisma generate",
+    "start": "node dist/index.js",
+    "dev": "nodemon src/index.ts",
+    "prisma:generate": "prisma generate"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.500.0",
+    "@prisma/client": "^5.10.0",
+    "bullmq": "^5.1.0",
+    "dotenv": "^16.4.5",
+    "fluent-ffmpeg": "^2.1.2",
+    "ioredis": "^5.3.2"
+  },
+  "devDependencies": {
+    "@types/fluent-ffmpeg": "^2.1.24",
+    "@types/node": "^20.11.19",
+    "nodemon": "^3.0.3",
+    "prisma": "^5.10.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  }
+}

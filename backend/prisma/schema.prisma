@@ -1,0 +1,52 @@
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum JobStatus {
+  UPLOADED
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum AssetType {
+  VIDEO
+  THUMBNAIL
+  AUDIO
+}
+
+model Video {
+  id           String           @id @default(auto()) @map("_id") @db.ObjectId
+  title        String
+  description  String?
+  originalName String
+  mimeType     String
+  size         Float
+  duration     Float?
+  originalPath String
+  status       JobStatus        @default(UPLOADED)
+  progress     Int              @default(0)
+  error        String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  assets       ProcessedAsset[]
+}
+
+model ProcessedAsset {
+  id         String    @id @default(auto()) @map("_id") @db.ObjectId
+  videoId    String    @db.ObjectId
+  video      Video     @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  assetType  AssetType
+  resolution String    // e.g. "1080p", "720p", "480p", "original"
+  format     String    // e.g. "mp4", "webm", "png", "mp3"
+  path       String
+  url        String    // Download/Stream URL
+  size       Float
+  createdAt  DateTime  @default(now())
+}
