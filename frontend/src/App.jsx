@@ -1129,17 +1129,26 @@ export default function App() {
                   <span>Ops</span>
                 </button>
                 
-                <button className="menu-item" onClick={() => setActiveTab('jobs')}>
+                <button 
+                  className={`menu-item ${activeTab === 'jobs' ? 'active' : ''}`}
+                  onClick={() => setActiveTab('jobs')}
+                >
                   <Clock size={16} />
                   <span>Jobs</span>
                 </button>
                 
-                <button className="menu-item" onClick={() => setActiveTab('analytics')}>
+                <button 
+                  className={`menu-item ${activeTab === 'analytics' ? 'active' : ''}`}
+                  onClick={() => setActiveTab('analytics')}
+                >
                   <BarChart size={16} />
                   <span>Analytics</span>
                 </button>
                 
-                <button className="menu-item" onClick={() => setActiveTab('billing')}>
+                <button 
+                  className={`menu-item ${activeTab === 'billing' ? 'active' : ''}`}
+                  onClick={() => setActiveTab('billing')}
+                >
                   <DollarSign size={16} />
                   <span>Billing</span>
                 </button>
@@ -2247,7 +2256,10 @@ export default function App() {
                     </form>
                   </div>
                 </div>
-                   {/* 5. Operations Telemetry & Console Tab (Screenshot 2 Layout) */}
+              </>
+            )}
+
+            {/* 5. Operations Telemetry & Console Tab (Screenshot 2 Layout) */}
             {activeTab === 'ops' && (() => {
               const ecsClusterLoad = processingCount > 0 ? Math.min(98.5, 12.4 + (processingCount * 18.5)) : 10.2;
               const memoryUtil = processingCount > 0 ? Math.min(92.4, 28.2 + (processingCount * 11.3)) : 24.6;
@@ -2376,8 +2388,6 @@ export default function App() {
                 </>
               );
             })()}
-          </>
-        )}
 
         {/* Jobs Management Tab */}
             {activeTab === 'jobs' && (
