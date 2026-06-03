@@ -28,7 +28,7 @@ const worker = new Worker(
     console.log(`[Job ${job.id}] Successfully completed video processing: ${job.data.videoId}`);
   },
   {
-    connection,
+    connection: connection as any,
     concurrency: 1, // Process 1 video at a time to prevent CPU overload in container
     limiter: {
       max: 1,
@@ -39,15 +39,15 @@ const worker = new Worker(
 
 // Event Listeners
 worker.on('active', (job) => {
-  console.log(`[Job ${job.id}] Has active status`);
+  console.log(`[Job ${job?.id}] Has active status`);
 });
 
 worker.on('completed', (job) => {
-  console.log(`[Job ${job.id}] Has completed status`);
+  console.log(`[Job ${job?.id}] Has completed status`);
 });
 
 worker.on('failed', (job, err) => {
-  console.error(`[Job ${job.id}] Has failed with error:`, err.message);
+  console.error(`[Job ${job?.id}] Has failed with error:`, err.message);
 });
 
 worker.on('error', (err) => {

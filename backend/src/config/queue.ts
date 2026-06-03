@@ -8,7 +8,7 @@ export const connection = new IORedis(redisUrl, {
 });
 
 export const videoQueue = new Queue('video-processing', {
-  connection,
+  connection: connection as any,
   defaultJobOptions: {
     attempts: 3,
     backoff: {

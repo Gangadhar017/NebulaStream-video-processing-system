@@ -144,14 +144,14 @@ const generateThumbnails = async (
     await new Promise<void>((resolve, reject) => {
       ffmpeg(inputPath)
         .seekInput(timestamp)
-        .vframes(1)
+        .frames(1)
         .size('320x180')
         .format('image2')
         .on('end', () => {
           thumbnailPaths.push(outputPath);
           resolve();
         })
-        .on('error', (err) => reject(err))
+        .on('error', (err: Error) => reject(err))
         .save(outputPath);
     });
 
