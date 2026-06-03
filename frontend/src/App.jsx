@@ -124,6 +124,40 @@ export default function App() {
     stream: 210
   });
 
+  // Size calculations helper
+  const formatBytes = (bytes, decimals = 2) => {
+    if (bytes === undefined || bytes === null || bytes === 0) return 'Stream Source';
+    const k = 1024;
+    const dm = decimals < 0 ? 0 : decimals;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+  };
+
+  // Compute active db details
+  const totalVideos = videos.length;
+  const processingCount = videos.filter(v => v.status === 'PROCESSING' || v.status === 'QUEUED').length;
+  const completedCount = videos.filter(v => v.status === 'COMPLETED').length;
+  const failedCount = videos.filter(v => v.status === 'FAILED').length;
+
+  // Real S3 space consumed by original files + processed output assets
+  const totalS3Size = videos.reduce((sum, v) => {
+    const originalSize = v.size || 0;
+    const assetsSize = v.assets ? v.assets.reduce((aSum, asset) => aSum + (asset.size || 0), 0) : 0;
+    return sum + originalSize + assetsSize;
+  }, 0);
+
+  const estimatedS3Cost = ((totalS3Size / (1024 * 1024 * 1024)) * 0.023).toFixed(2);
+  
+  // Real success rate calculated safely
+  const processedJobsCount = totalVideos - processingCount;
+  const successRate = processedJobsCount > 0 
+    ? ((completedCount / processedJobsCount) * 100).toFixed(1) 
+    : '100.0';
+
+  const totalOriginalSize = videos.reduce((sum, v) => sum + (v.size || 0), 0);
+  const activeJobsList = videos.filter(v => v.status === 'QUEUED' || v.status === 'PROCESSING');
+
   useEffect(() => {
     const interval = setInterval(() => {
       setApiLatencies(prev => ({
@@ -797,40 +831,6 @@ export default function App() {
     });
   };
 
-  // Size calculations helper
-  const formatBytes = (bytes, decimals = 2) => {
-    if (bytes === undefined || bytes === null || bytes === 0) return 'Stream Source';
-    const k = 1024;
-    const dm = decimals < 0 ? 0 : decimals;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
-  };
-
-  // Compute active db details
-  const totalVideos = videos.length;
-  const processingCount = videos.filter(v => v.status === 'PROCESSING' || v.status === 'QUEUED').length;
-  const completedCount = videos.filter(v => v.status === 'COMPLETED').length;
-  const failedCount = videos.filter(v => v.status === 'FAILED').length;
-
-  // Real S3 space consumed by original files + processed output assets
-  const totalS3Size = videos.reduce((sum, v) => {
-    const originalSize = v.size || 0;
-    const assetsSize = v.assets ? v.assets.reduce((aSum, asset) => aSum + (asset.size || 0), 0) : 0;
-    return sum + originalSize + assetsSize;
-  }, 0);
-
-  const estimatedS3Cost = ((totalS3Size / (1024 * 1024 * 1024)) * 0.023).toFixed(2);
-  
-  // Real success rate calculated safely
-  const processedJobsCount = totalVideos - processingCount;
-  const successRate = processedJobsCount > 0 
-    ? ((completedCount / processedJobsCount) * 100).toFixed(1) 
-    : '100.0';
-
-  const totalOriginalSize = videos.reduce((sum, v) => sum + (v.size || 0), 0);
-  const activeJobsList = videos.filter(v => v.status === 'QUEUED' || v.status === 'PROCESSING');
-  
   // Library filters
   const filteredVideos = videos.filter(video => {
     const matchesSearch = video.title.toLowerCase().includes(searchTerm.toLowerCase());
