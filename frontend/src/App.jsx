@@ -124,6 +124,10 @@ export default function App() {
     stream: 210
   });
 
+  const [analyticsRange, setAnalyticsRange] = useState('7d');
+  const [activeBillingPlan, setActiveBillingPlan] = useState('free');
+  const [billingLoading, setBillingLoading] = useState(false);
+
   // Size calculations helper
   const formatBytes = (bytes, decimals = 2) => {
     if (bytes === undefined || bytes === null || bytes === 0) return 'Stream Source';
@@ -132,6 +136,13 @@ export default function App() {
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+  };
+
+  // Timer format helper
+  const formatTimer = (secs) => {
+    const m = Math.floor(secs / 60).toString().padStart(2, '0');
+    const s = (secs % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
   };
 
   // Compute active db details
@@ -2364,16 +2375,404 @@ export default function App() {
                   </div>
                 </>
               );
-            })()}           </>
+            })()}
+          </>
+        )}
+
+        {/* Jobs Management Tab */}
+            {activeTab === 'jobs' && (
+              <>
+                <div>
+                  <h1 style={{ fontSize: '2rem', fontWeight: 800 }}>Jobs Queue Manager</h1>
+                  <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
+                    Monitor active transcode requests, track progress bars, and manage background tasks.
+                  </p>
+                </div>
+
+                <div className="section-card" style={{ marginTop: '1.5rem', padding: '1.5rem' }}>
+                  {videos.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '4rem 2rem' }}>
+                      <Activity size={48} style={{ color: 'var(--color-muted)', margin: '0 auto 1.5rem', opacity: 0.5 }} />
+                      <h3 style={{ fontSize: '1.2rem', color: '#fff', fontWeight: 700 }}>No Jobs Recorded</h3>
+                      <p style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem', marginTop: '0.35rem', maxWidth: '350px', margin: '0.35rem auto 0' }}>
+                        Create a new transcoding pipeline job by uploading a video or importing a stream URL.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="jobs-table-wrapper" style={{ overflowX: 'auto' }}>
+                      <table className="jobs-table" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                        <thead>
+                          <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--color-text-muted)', fontSize: '0.8rem', fontWeight: 700 }}>
+                            <th style={{ padding: '0.75rem 1rem' }}>JOB ID</th>
+                            <th style={{ padding: '0.75rem 1rem' }}>ASSET</th>
+                            <th style={{ padding: '0.75rem 1rem' }}>TARGET CONFIG</th>
+                            <th style={{ padding: '0.75rem 1rem' }}>STATUS</th>
+                            <th style={{ padding: '0.75rem 1rem' }}>PROGRESS</th>
+                            <th style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>ACTIONS</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {videos.map(video => {
+                            const isProcessing = video.status === 'PROCESSING' || video.status === 'QUEUED';
+                            const videoAssets = video.assets ? video.assets.filter(a => a.assetType === 'VIDEO') : [];
+                            const audioAssets = video.assets ? video.assets.filter(a => a.assetType === 'AUDIO') : [];
+                            const resolutions = videoAssets.map(a => a.resolution).join(', ') || '720p, 480p';
+                            const audioIsIsolated = audioAssets.length > 0 || video.mimeType === 'audio/mpeg';
+                            const targets = `${resolutions} (${video.mimeType.split('/')[1] || 'mp4'})${audioIsIsolated ? ' + Audio Isolated' : ''}`;
+
+                            return (
+                              <tr key={video.id} className="jobs-table-row" style={{ borderBottom: '1px solid var(--border-color)', fontSize: '0.88rem' }}>
+                                <td style={{ padding: '1rem', fontFamily: 'monospace', color: 'var(--color-primary)', fontWeight: 600 }}>
+                                  JOB-{video.id.slice(-5).toUpperCase()}
+                                </td>
+                                <td style={{ padding: '1rem' }}>
+                                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                    <span style={{ fontWeight: 600, color: '#fff' }}>{video.title}</span>
+                                    <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>{video.originalName}</span>
+                                  </div>
+                                </td>
+                                <td style={{ padding: '1rem', color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>
+                                  {targets}
+                                </td>
+                                <td style={{ padding: '1rem' }}>
+                                  <span className={`status-badge ${video.status === 'COMPLETED' ? 'success' : isProcessing ? 'processing' : video.status === 'FAILED' ? 'error' : 'queued'}`}>
+                                    {video.status}
+                                  </span>
+                                </td>
+                                <td style={{ padding: '1rem', width: '200px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                    <div className="jobs-progress-track" style={{ flexGrow: 1, height: '6px', background: 'rgba(255,255,255,0.05)', borderRadius: '3px', overflow: 'hidden', position: 'relative' }}>
+                                      <div 
+                                        className={`jobs-progress-fill ${isProcessing ? 'animated' : ''}`} 
+                                        style={{ 
+                                          width: `${video.progress || 0}%`, 
+                                          height: '100%', 
+                                          background: video.status === 'FAILED' ? 'var(--color-danger)' : video.status === 'COMPLETED' ? 'var(--color-success)' : 'linear-gradient(to right, var(--color-primary), var(--color-secondary))',
+                                          borderRadius: '3px'
+                                        }}
+                                      ></div>
+                                    </div>
+                                    <span style={{ fontSize: '0.75rem', fontWeight: 700, color: video.status === 'FAILED' ? 'var(--color-danger)' : '#fff', width: '35px', textAlign: 'right' }}>
+                                      {video.progress || 0}%
+                                    </span>
+                                  </div>
+                                </td>
+                                <td style={{ padding: '1rem', textAlign: 'right' }}>
+                                  <button 
+                                    className="btn-action-secondary" 
+                                    style={{ padding: '0.35rem', borderRadius: '4px', background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.2)', color: 'var(--color-danger)' }}
+                                    onClick={() => handleDeleteVideo(video.id)}
+                                    title="Delete Job"
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </>
             )}
 
-            {/* 6. Enterprise placeholders for settings, billing, jobs, analytics */}
-            {['jobs', 'analytics', 'settings', 'billing'].includes(activeTab) && (
+            {/* Analytics Tab */}
+            {activeTab === 'analytics' && (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <h1 style={{ fontSize: '2rem', fontWeight: 800 }}>Pipeline Analytics</h1>
+                    <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
+                      Cluster transcoding speeds, storage optimization logs, and queue metrics.
+                    </p>
+                  </div>
+                  <div className="chart-filter-row" style={{ display: 'flex', gap: '0.25rem', background: 'rgba(255,255,255,0.03)', padding: '3px', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+                    {['24h', '7d', '30d'].map(range => (
+                      <button 
+                        key={range}
+                        className={`chart-filter-btn ${analyticsRange === range ? 'active' : ''}`}
+                        onClick={() => setAnalyticsRange(range)}
+                        style={{ fontSize: '0.75rem', padding: '4px 10px', textTransform: 'uppercase' }}
+                      >
+                        {range}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Metrics Grid */}
+                <div className="analytics-metrics-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.25rem', marginTop: '1.5rem' }}>
+                  <div className="metric-card">
+                    <span className="section-card-title" style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>AVG SPEED MULTIPLIER</span>
+                    <h2 style={{ fontSize: '1.8rem', fontWeight: 800, marginTop: '0.25rem' }}>2.4x <span style={{ fontSize: '0.75rem', color: 'var(--color-success)', fontWeight: 600 }}>+0.3x</span></h2>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>Real-time transcode factor</span>
+                  </div>
+                  
+                  <div className="metric-card">
+                    <span className="section-card-title" style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>STORAGE OPTIMIZATION</span>
+                    <h2 style={{ fontSize: '1.8rem', fontWeight: 800, marginTop: '0.25rem' }}>{successRate > 0 ? `${(parseFloat(successRate) * 0.68).toFixed(1)}%` : '68.4%'}</h2>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>Average space saved</span>
+                  </div>
+
+                  <div className="metric-card">
+                    <span className="section-card-title" style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>BULLMQ DELAY</span>
+                    <h2 style={{ fontSize: '1.8rem', fontWeight: 800, marginTop: '0.25rem' }}>1.8s <span style={{ fontSize: '0.75rem', color: 'var(--color-success)', fontWeight: 600 }}>-0.4s</span></h2>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>Task pickup latency</span>
+                  </div>
+
+                  <div className="metric-card">
+                    <span className="section-card-title" style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>PIPELINE ERROR RATE</span>
+                    <h2 style={{ fontSize: '1.8rem', fontWeight: 800, marginTop: '0.25rem' }}>{failedCount > 0 ? `${((failedCount / totalVideos) * 100).toFixed(1)}%` : '0.0%'}</h2>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>Job completion health</span>
+                  </div>
+                </div>
+
+                <div className="analytics-dashboard-split" style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '1.5rem', marginTop: '1.5rem' }}>
+                  {/* Left panel: Transcode volume flex bar chart */}
+                  <div className="section-card" style={{ padding: '1.5rem' }}>
+                    <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#fff', marginBottom: '1.5rem' }}>Transcode Volume (Processed Minutes)</h3>
+                    <div className="bar-chart-container" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', height: '180px', paddingTop: '10px' }}>
+                      {analyticsRange === '24h' ? (
+                        [12, 18, 15, 24, 30, 42, 28, 35, 48, 55, 60, 40].map((val, i) => (
+                          <div key={i} className="chart-bar-col" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexGrow: 1, gap: '0.5rem' }}>
+                            <div className="chart-bar" style={{ height: `${val * 2.2}px`, width: '16px', background: 'linear-gradient(to top, var(--color-primary), var(--color-secondary))', borderRadius: '4px', position: 'relative' }}>
+                              <div className="chart-tooltip">{val}m</div>
+                            </div>
+                            <span style={{ fontSize: '0.65rem', color: 'var(--color-text-muted)' }}>{i * 2}h</span>
+                          </div>
+                        ))
+                      ) : analyticsRange === '7d' ? (
+                        [145, 180, 210, 155, 240, 290, 310].map((val, i) => (
+                          <div key={i} className="chart-bar-col" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexGrow: 1, gap: '0.5rem' }}>
+                            <div className="chart-bar" style={{ height: `${val * 0.45}px`, width: '32px', background: 'linear-gradient(to top, var(--color-primary), var(--color-secondary))', borderRadius: '4px', position: 'relative' }}>
+                              <div className="chart-tooltip">{val}m</div>
+                            </div>
+                            <span style={{ fontSize: '0.65rem', color: 'var(--color-text-muted)' }}>{['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][i]}</span>
+                          </div>
+                        ))
+                      ) : (
+                        [420, 580, 710, 650].map((val, i) => (
+                          <div key={i} className="chart-bar-col" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexGrow: 1, gap: '0.5rem' }}>
+                            <div className="chart-bar" style={{ height: `${val * 0.2}px`, width: '48px', background: 'linear-gradient(to top, var(--color-primary), var(--color-secondary))', borderRadius: '4px', position: 'relative' }}>
+                              <div className="chart-tooltip">{val}m</div>
+                            </div>
+                            <span style={{ fontSize: '0.65rem', color: 'var(--color-text-muted)' }}>W{i + 1}</span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Right panel: Active Fargate cluster scaling nodes history timeline */}
+                  <div className="section-card" style={{ padding: '1.5rem' }}>
+                    <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#fff', marginBottom: '1rem' }}>Active Infrastructure Logs</h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.88rem' }}>
+                      <div className="timeline-node" style={{ display: 'flex', gap: '0.75rem', position: 'relative' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                          <span style={{ width: '8px', height: '8px', background: 'var(--color-success)', borderRadius: '50%', boxShadow: '0 0 8px var(--color-success)' }}></span>
+                          <span style={{ width: '1px', flexGrow: 1, background: 'var(--border-color)', marginTop: '4px' }}></span>
+                        </div>
+                        <div>
+                          <span style={{ fontSize: '0.68rem', color: 'var(--color-text-muted)', display: 'block' }}>14:02:11 • EU-NORTH-1</span>
+                          <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#fff' }}>ECS Auto-Scaler initialized node-fargate-019</span>
+                          <p style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', marginTop: '0.15rem' }}>Capacity scaled up due to high task queue volume.</p>
+                        </div>
+                      </div>
+
+                      <div className="timeline-node" style={{ display: 'flex', gap: '0.75rem', position: 'relative' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                          <span style={{ width: '8px', height: '8px', background: 'var(--color-primary)', borderRadius: '50%' }}></span>
+                          <span style={{ width: '1px', flexGrow: 1, background: 'var(--border-color)', marginTop: '4px' }}></span>
+                        </div>
+                        <div>
+                          <span style={{ fontSize: '0.68rem', color: 'var(--color-text-muted)', display: 'block' }}>13:58:05 • US-EAST-1</span>
+                          <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#fff' }}>S3 ObjectCreated trigger fired on bucket video-processing-assets</span>
+                          <p style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', marginTop: '0.15rem' }}>Metadata registered, database collection indexed successfully.</p>
+                        </div>
+                      </div>
+
+                      <div className="timeline-node" style={{ display: 'flex', gap: '0.75rem' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                          <span style={{ width: '8px', height: '8px', background: 'var(--color-warning)', borderRadius: '50%' }}></span>
+                        </div>
+                        <div>
+                          <span style={{ fontSize: '0.68rem', color: 'var(--color-text-muted)', display: 'block' }}>13:42:12 • EU-NORTH-1</span>
+                          <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#fff' }}>Redis Broker connection established successfully</span>
+                          <p style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', marginTop: '0.15rem' }}>Polling active transcode events from ElastiCache serverless broker.</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Billing Management Tab */}
+            {activeTab === 'billing' && (
+              <>
+                <div>
+                  <h1 style={{ fontSize: '2rem', fontWeight: 800 }}>Billing & Subscription</h1>
+                  <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
+                    Manage subscription tiers, monitor processed data volume, and view invoices.
+                  </p>
+                </div>
+
+                <div className="billing-grid" style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '1.5rem', marginTop: '1.5rem' }}>
+                  {/* Left Panel: Plan selection & Usage */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                    {/* Usage Meter card */}
+                    <div className="section-card" style={{ padding: '1.5rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#fff' }}>Usage this Month</h3>
+                        <span style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>Billing cycle resets in 14 days</span>
+                      </div>
+                      <div style={{ marginTop: '1rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: 'var(--color-text-muted)', marginBottom: '0.35rem' }}>
+                          <span>Data Processed (Transcoded GB)</span>
+                          <span style={{ color: '#fff', fontWeight: 700 }}>{(totalS3Size / (1024*1024*1024)).toFixed(2)} GB / 50 GB Free</span>
+                        </div>
+                        <div style={{ height: '8px', background: 'rgba(255,255,255,0.05)', borderRadius: '4px', overflow: 'hidden' }}>
+                          <div 
+                            style={{ 
+                              width: `${Math.min(100, Math.max(2, (totalS3Size / (1024*1024*1024*50)) * 100))}%`, 
+                              height: '100%', 
+                              background: 'linear-gradient(to right, var(--color-primary), var(--color-secondary))',
+                              borderRadius: '4px' 
+                            }}
+                          ></div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Subscription plans selector */}
+                    <div>
+                      <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#fff', marginBottom: '0.88rem' }}>Subscription Tiers</h3>
+                      <div className="subscription-plan-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
+                        {/* Developer Free Tier */}
+                        <div className={`plan-card ${activeBillingPlan === 'free' ? 'selected' : ''}`} onClick={() => setActiveBillingPlan('free')}>
+                          <span className="plan-badge">DEVELOPER</span>
+                          <h2 style={{ fontSize: '1.75rem', fontWeight: 800, margin: '0.5rem 0' }}>$0 <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', fontWeight: 500 }}>/ mo</span></h2>
+                          <ul style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', paddingLeft: '1rem', display: 'flex', flexDirection: 'column', gap: '0.25rem', flexGrow: 1 }}>
+                            <li>50 GB free transcoding / mo</li>
+                            <li>Standard Fargate queue priority</li>
+                            <li>Max 2 parallel tasks</li>
+                          </ul>
+                          {activeBillingPlan === 'free' && <span style={{ fontSize: '0.75rem', color: 'var(--color-primary)', fontWeight: 700, marginTop: '0.75rem', display: 'block', textAlign: 'center' }}>Active Plan</span>}
+                        </div>
+
+                        {/* Professional pay-as-you-go */}
+                        <div className={`plan-card ${activeBillingPlan === 'pro' ? 'selected' : ''}`} onClick={() => {
+                          if (activeBillingPlan !== 'pro') {
+                            setBillingLoading(true);
+                            setTimeout(() => {
+                              setBillingLoading(false);
+                              setActiveBillingPlan('pro');
+                              alert("Successfully upgraded to Professional Pay-as-you-go Plan!");
+                            }, 1000);
+                          }
+                        }}>
+                          <span className="plan-badge" style={{ background: 'linear-gradient(135deg, var(--color-secondary), #0891b2)' }}>PROFESSIONAL</span>
+                          <h2 style={{ fontSize: '1.75rem', fontWeight: 800, margin: '0.5rem 0' }}>$29 <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', fontWeight: 500 }}>/ mo</span></h2>
+                          <ul style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', paddingLeft: '1rem', display: 'flex', flexDirection: 'column', gap: '0.25rem', flexGrow: 1 }}>
+                            <li>500 GB transcoding included</li>
+                            <li>High Fargate queue priority</li>
+                            <li>Max 8 parallel tasks</li>
+                            <li>AV1 accelerated encoding</li>
+                          </ul>
+                          {activeBillingPlan === 'pro' ? (
+                            <span style={{ fontSize: '0.75rem', color: 'var(--color-secondary)', fontWeight: 700, marginTop: '0.75rem', display: 'block', textAlign: 'center' }}>Active Plan</span>
+                          ) : (
+                            <button className="btn-action-primary" style={{ width: '100%', padding: '0.35rem', fontSize: '0.75rem', marginTop: '0.75rem' }} disabled={billingLoading}>
+                              {billingLoading ? 'Upgrading...' : 'Upgrade Plan'}
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Enterprise Plan */}
+                        <div className={`plan-card ${activeBillingPlan === 'enterprise' ? 'selected' : ''}`} onClick={() => alert("Contact Sales at sales@nebulastream.com to build custom dedicated cluster setups.")}>
+                          <span className="plan-badge" style={{ background: 'linear-gradient(135deg, var(--color-warning), #d97706)' }}>ENTERPRISE</span>
+                          <h2 style={{ fontSize: '1.75rem', fontWeight: 800, margin: '0.5rem 0' }}>Custom</h2>
+                          <ul style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', paddingLeft: '1rem', display: 'flex', flexDirection: 'column', gap: '0.25rem', flexGrow: 1 }}>
+                            <li>Unlimited storage & transit</li>
+                            <li>Dedicated cluster container nodes</li>
+                            <li>SLA support contract</li>
+                            <li>Custom watermark overlays</li>
+                          </ul>
+                          <button className="btn-action-secondary" style={{ width: '100%', padding: '0.35rem', fontSize: '0.75rem', marginTop: '0.75rem' }}>
+                            Contact Sales
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right Panel: Payment Mock Card & Invoice Statements */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                    {/* Linked Credit Card mock */}
+                    <div className="section-card billing-glass-card" style={{ padding: '1.5rem', background: 'linear-gradient(135deg, rgba(30,41,59,0.7), rgba(15,23,42,0.7))', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', position: 'relative', overflow: 'hidden', minHeight: '140px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                      <div className="credit-card-glow" style={{ position: 'absolute', right: '-40px', top: '-40px', width: '150px', height: '150px', borderRadius: '50%', background: 'radial-gradient(circle, var(--color-primary) 0%, transparent 70%)', opacity: 0.3, pointerEvents: 'none' }}></div>
+                      
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', zIndex: 1 }}>
+                        <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--color-text-muted)', fontWeight: 600 }}>Linked Payment Card</span>
+                        <span style={{ fontSize: '1rem', fontWeight: 900, fontStyle: 'italic', color: '#fff' }}>VISA</span>
+                      </div>
+                      
+                      <div style={{ zIndex: 1, marginTop: '1.5rem' }}>
+                        <span style={{ fontSize: '1.1rem', letterSpacing: '2px', fontWeight: 600, color: '#fff', display: 'block', fontFamily: 'monospace' }}>••••  ••••  ••••  8821</span>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem', fontSize: '0.68rem', color: 'var(--color-text-muted)' }}>
+                          <span>OPERATOR GANGADHAR</span>
+                          <span>EXP: 12/28</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Invoice history */}
+                    <div className="section-card" style={{ padding: '1.5rem' }}>
+                      <h3 style={{ fontSize: '0.9rem', fontWeight: 800, color: '#fff', marginBottom: '0.88rem' }}>Billing Invoices</h3>
+                      <div style={{ overflowX: 'auto' }}>
+                        <table className="invoice-history-table" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.78rem' }}>
+                          <thead>
+                            <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--color-text-muted)', fontWeight: 700 }}>
+                              <th style={{ padding: '0.5rem 0.25rem' }}>STATEMENT</th>
+                              <th style={{ padding: '0.5rem 0.25rem' }}>AMOUNT</th>
+                              <th style={{ padding: '0.5rem 0.25rem', textAlign: 'right' }}>STATUS</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {[
+                              { id: 'INV-2026-005', period: 'May 2026', amount: '$0.00' },
+                              { id: 'INV-2026-004', period: 'April 2026', amount: '$0.00' },
+                              { id: 'INV-2026-003', period: 'March 2026', amount: '$0.00' },
+                            ].map(inv => (
+                              <tr key={inv.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                <td style={{ padding: '0.65rem 0.25rem' }}>
+                                  <span style={{ fontWeight: 600, color: '#fff', display: 'block' }}>{inv.id}</span>
+                                  <span style={{ fontSize: '0.65rem', color: 'var(--color-text-muted)' }}>{inv.period}</span>
+                                </td>
+                                <td style={{ padding: '0.65rem 0.25rem', color: '#fff' }}>{inv.amount}</td>
+                                <td style={{ padding: '0.65rem 0.25rem', textAlign: 'right' }}>
+                                  <span className="status-badge success" style={{ fontSize: '0.65rem', padding: '2px 8px' }}>PAID</span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Settings placeholder Tab */}
+            {activeTab === 'settings' && (
               <div className="panel" style={{ textAlign: 'center', padding: '5rem 2rem' }}>
-                <Activity size={48} style={{ margin: '0 auto 1.5rem', color: 'var(--color-primary)', opacity: 0.8 }} />
-                <h2 style={{ fontSize: '1.5rem', fontWeight: 800 }}>{activeTab.toUpperCase()} PANEL</h2>
+                <SlidersHorizontal size={48} style={{ margin: '0 auto 1.5rem', color: 'var(--color-primary)', opacity: 0.8 }} />
+                <h2 style={{ fontSize: '1.5rem', fontWeight: 800 }}>SETTINGS PANEL</h2>
                 <p style={{ color: 'var(--color-text-muted)', marginTop: '0.5rem', fontSize: '0.9rem' }}>
-                  Connected to NebulaStream Enterprise cloud cluster node: <strong style={{ color: '#fff' }}>node-fargate-018</strong>. Data updates automatically.
+                  Connected to NebulaStream Enterprise cloud cluster node: <strong style={{ color: '#fff' }}>node-fargate-018</strong>. Settings synced automatically.
                 </p>
               </div>
             )}

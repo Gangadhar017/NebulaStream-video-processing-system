@@ -1718,3 +1718,132 @@ input:checked + .toggle-slider:before {
   padding: 2px 6px;
   border-radius: 4px;
 }
+
+/* Jobs Dashboard Table Styles */
+.jobs-table-row {
+  transition: var(--transition);
+}
+.jobs-table-row:hover {
+  background: rgba(255, 255, 255, 0.015);
+}
+.jobs-progress-fill.animated {
+  background-size: 30px 30px;
+  background-image: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.15) 25%,
+    transparent 25%,
+    transparent 50%,
+    rgba(255, 255, 255, 0.15) 50%,
+    rgba(255, 255, 255, 0.15) 75%,
+    transparent 75%,
+    transparent
+  );
+  animation: barberpole 1s linear infinite;
+}
+@keyframes barberpole {
+  from { background-position: 0 0; }
+  to { background-position: 60px 30px; }
+}
+
+/* Analytics Dashboard Styles */
+.analytics-dashboard-split {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+}
+@media (min-width: 992px) {
+  .analytics-dashboard-split {
+    grid-template-columns: 1.5fr 1fr;
+  }
+}
+.chart-bar {
+  transition: height 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  cursor: pointer;
+}
+.chart-bar:hover {
+  filter: brightness(1.2);
+}
+.chart-bar-col {
+  position: relative;
+}
+.chart-tooltip {
+  position: absolute;
+  top: -28px;
+  left: 50%;
+  transform: translateX(-50%) scale(0.85);
+  background: var(--bg-deep);
+  border: 1px solid var(--border-color);
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.15s ease-in-out;
+  white-space: nowrap;
+  box-shadow: var(--shadow-sm);
+}
+.chart-bar:hover .chart-tooltip {
+  opacity: 1;
+  transform: translateX(-50%) scale(1);
+  top: -32px;
+}
+.timeline-node::before {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 12px;
+  width: 1px;
+  height: calc(100% - 12px);
+  background: var(--border-color);
+}
+
+/* Billing Dashboard Styles */
+.subscription-plan-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+@media (min-width: 768px) {
+  .subscription-plan-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+.plan-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 1.25rem;
+  cursor: pointer;
+  transition: var(--transition);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+}
+.plan-card:hover {
+  border-color: rgba(139, 92, 246, 0.3);
+  transform: translateY(-2px);
+  background: var(--bg-card-hover);
+}
+.plan-card.selected {
+  border-color: var(--color-primary);
+  box-shadow: var(--shadow-neon);
+  background: rgba(139, 92, 246, 0.05);
+}
+.plan-badge {
+  align-self: flex-start;
+  font-size: 0.65rem;
+  font-weight: 800;
+  color: #fff;
+  background: linear-gradient(135deg, var(--color-primary), #6366f1);
+  padding: 2px 8px;
+  border-radius: 4px;
+  letter-spacing: 0.5px;
+}
+.billing-glass-card {
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
