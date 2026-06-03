@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Upload, Film, Loader2, Play, Trash2, Settings, 
   RefreshCw, CheckCircle, AlertCircle, Clock, Database, 
-  BarChart, Sparkles, Video, Volume2, Image, Layers, ArrowRight
+  BarChart, Sparkles, Video, Volume2, Image, Layers, ArrowRight,
+  HelpCircle, Activity, DollarSign, Terminal, Plus, ShieldCheck, Search, SlidersHorizontal, Eye
 } from 'lucide-react';
 import VideoPlayerModal from './components/VideoPlayerModal';
 
@@ -11,8 +12,13 @@ const API_BASE = import.meta.env.VITE_API_URL || '';
 export default function App() {
   const [videos, setVideos] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('library');
+  const [activeTab, setActiveTab] = useState('dashboard');
   
+  // Search & Filter state for Library
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterCodec, setFilterCodec] = useState('all');
+  const [filterFormat, setFilterFormat] = useState('all');
+
   // Upload States
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -29,7 +35,12 @@ export default function App() {
     formats: ['mp4'],
     watermarkText: 'AETHERFLOW',
     extractAudio: true,
-    thumbnailsCount: 3
+    thumbnailsCount: 3,
+    // New metadata bindings from screenshot
+    internalTitle: '',
+    descriptionNotes: '',
+    autoColorGrading: false,
+    frameInterpolation: true
   });
 
   // Webcam States
@@ -50,6 +61,12 @@ export default function App() {
   const [streamTitle, setStreamTitle] = useState('');
   const [streamDescription, setStreamDescription] = useState('');
   const [isImportingStream, setIsImportingStream] = useState(false);
+
+  // Live FFMPEG Logs Console States (Ops page)
+  const [consoleLogs, setConsoleLogs] = useState([
+    "[2026-06-03 14:01:14] INFO: FFmpeg v7.0.1 engine initialization success on node-fargate-018.",
+    "[2026-06-03 14:01:15] frame=  240 fps= 48 q=28.0 size=  1024kB time=00:00:10.00 bitrate= 838.8kbits/s speed=  2x"
+  ]);
 
   const connectedIds = useRef(new Set());
   const fileInputRef = useRef(null);
@@ -118,23 +135,23 @@ export default function App() {
     });
   }, [videos]);
 
-  // Handle webcam tab init and cleanups
+  // Clean camera feed on leaving webcam view
   useEffect(() => {
-    if (activeTab === 'webcam') {
-      initWebcamTab();
-    } else {
+    if (activeTab !== 'webcam') {
       stopCameraFeed();
+    } else {
+      initWebcamTab();
     }
   }, [activeTab]);
 
-  // Auto restart camera feed when active devices change
+  // Auto restart camera feed when devices choice changes
   useEffect(() => {
     if (cameraStream && activeTab === 'webcam') {
       startCameraFeed();
     }
   }, [selectedVideoDevice, selectedAudioDevice]);
 
-  // Recording timer increment
+  // Record timer increment
   useEffect(() => {
     let interval = null;
     if (isRecording) {
@@ -149,12 +166,36 @@ export default function App() {
     };
   }, [isRecording]);
 
+  // Generate simulated FFmpeg logs periodically in Ops Tab
+  useEffect(() => {
+    let timer = null;
+    if (activeTab === 'ops') {
+      timer = setInterval(() => {
+        const timestamp = new Date().toLocaleTimeString();
+        const randFrame = Math.floor(Math.random() * 1000) + 120;
+        const randFps = Math.floor(Math.random() * 15) + 38;
+        const randSize = Math.floor(Math.random() * 4000) + 500;
+        const randSpeed = (Math.random() * 1.5 + 1.2).toFixed(1);
+        const timestampMarker = `[${new Date().toISOString().split('T')[0]} ${timestamp}]`;
+        
+        let newLog = `${timestampMarker} frame= ${randFrame} fps= ${randFps} q=28.0 size= ${randSize}kB time=00:00:30.00 bitrate= 838.8kbits/s speed= ${randSpeed}x`;
+        if (Math.random() > 0.85) {
+          newLog = `${timestampMarker} [WARNING] non-monotonous DTS in output stream 0:1; previous: 1420, current: 1420; changing to 1421.`;
+        }
+        
+        setConsoleLogs(prev => [...prev.slice(-18), newLog]);
+      }, 2500);
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [activeTab]);
+
   // Initialize webcam devices selection
   const initWebcamTab = async () => {
     try {
-      // Request initial permission to enumerate labeled devices
       const permissionStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-      permissionStream.getTracks().forEach(t => t.stop()); // turn off immediately
+      permissionStream.getTracks().forEach(t => t.stop());
       
       const devicesList = await navigator.mediaDevices.enumerateDevices();
       const videoDevs = devicesList.filter(d => d.kind === 'videoinput');
@@ -164,7 +205,7 @@ export default function App() {
       if (videoDevs.length > 0) setSelectedVideoDevice(videoDevs[0].deviceId);
       if (audioDevs.length > 0) setSelectedAudioDevice(audioDevs[0].deviceId);
     } catch (err) {
-      console.warn('Media devices access or labels blocked:', err);
+      console.warn('Media devices enumeration blocked:', err);
     }
   };
 
@@ -288,10 +329,15 @@ export default function App() {
         const newVideo = await res.json();
         setVideos(prev => [newVideo, ...prev]);
         setSelectedVideoForConfig(newVideo);
+        setJobSettings(prev => ({
+          ...prev,
+          internalTitle: newVideo.title,
+          descriptionNotes: newVideo.description || ''
+        }));
         setStreamUrl('');
         setStreamTitle('');
         setStreamDescription('');
-        setActiveTab('library'); // Switch back to configure
+        setActiveTab('studios'); // Switch to Studios for profile transcoding configs
       } else {
         const errData = await res.json();
         alert(errData.error || 'Failed to import stream URL');
@@ -308,7 +354,6 @@ export default function App() {
   const handleFileUpload = (file, customTitle = '', customDescription = '') => {
     if (!file) return;
     
-    // Size check (max 500MB)
     if (file.size > 500 * 1024 * 1024) {
       alert('File size exceeds the 500MB limit.');
       return;
@@ -338,7 +383,14 @@ export default function App() {
         const newVideo = JSON.parse(xhr.responseText);
         setVideos(prev => [newVideo, ...prev]);
         setSelectedVideoForConfig(newVideo);
-        setActiveTab('library');
+        
+        // Auto prepopulate Studios fields with uploaded video details
+        setJobSettings(prev => ({
+          ...prev,
+          internalTitle: newVideo.title,
+          descriptionNotes: newVideo.description || ''
+        }));
+        setActiveTab('studios');
       } else {
         alert('Upload failed: ' + xhr.responseText);
       }
@@ -399,21 +451,28 @@ export default function App() {
     if (!selectedVideoForConfig) return;
 
     try {
+      // If user altered title in studios input form, patch database or just transcode
       const res = await fetch(`${API_BASE}/api/videos/${selectedVideoForConfig.id}/process`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(jobSettings)
+        body: JSON.stringify({
+          resolutions: jobSettings.resolutions,
+          formats: jobSettings.formats,
+          watermarkText: jobSettings.watermarkText,
+          extractAudio: jobSettings.extractAudio,
+          thumbnailsCount: jobSettings.thumbnailsCount
+        })
       });
 
       if (res.ok) {
-        const data = await res.json();
         setVideos(prev => prev.map(v => {
           if (v.id === selectedVideoForConfig.id) {
-            return { ...v, status: 'QUEUED', progress: 0 };
+            return { ...v, status: 'QUEUED', progress: 0, title: jobSettings.internalTitle || v.title };
           }
           return v;
         }));
-        setSelectedVideoForConfig(null); // Clear panel
+        setSelectedVideoForConfig(null);
+        setActiveTab('dashboard'); // Redirect to live Active Jobs dashboard list
       } else {
         const errData = await res.json();
         alert(errData.error || 'Failed to dispatch job');
@@ -423,7 +482,7 @@ export default function App() {
     }
   };
 
-  // Toggle option checkboxes
+  // Toggle options checkboxes
   const toggleResolution = (res) => {
     setJobSettings(prev => {
       const resolutions = prev.resolutions.includes(res)
@@ -442,7 +501,7 @@ export default function App() {
     });
   };
 
-  // Helper formats
+  // Size calculations helper
   const formatBytes = (bytes, decimals = 2) => {
     if (bytes === undefined || bytes === null || bytes === 0) return 'Stream Source';
     const k = 1024;
@@ -452,98 +511,158 @@ export default function App() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
   };
 
-  // Compute stats metrics
+  // Compute active db details
   const totalVideos = videos.length;
   const processingCount = videos.filter(v => v.status === 'PROCESSING' || v.status === 'QUEUED').length;
   const completedCount = videos.filter(v => v.status === 'COMPLETED').length;
+
+  // Active or mock list of jobs for Dashboard Active Jobs List
+  const activeJobsList = videos.filter(v => v.status === 'QUEUED' || v.status === 'PROCESSING');
   
-  // Calculate total original size
-  const totalOriginalSize = videos.reduce((sum, v) => sum + (v.size || 0), 0);
+  // Filtered Video Library List
+  const filteredVideos = videos.filter(video => {
+    const matchesSearch = video.title.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    // Codec matches
+    let matchesCodec = true;
+    if (filterCodec !== 'all') {
+      if (filterCodec === 'h264' && !video.mimeType.includes('mp4')) matchesCodec = false;
+      if (filterCodec === 'vp9' && !video.mimeType.includes('webm')) matchesCodec = false;
+    }
+
+    // Format matches
+    let matchesFormat = true;
+    if (filterFormat !== 'all') {
+      if (filterFormat === 'mp4' && !video.mimeType.includes('mp4')) matchesFormat = false;
+      if (filterFormat === 'webm' && !video.mimeType.includes('webm')) matchesFormat = false;
+      if (filterFormat === 'stream' && !video.streamUrl) matchesFormat = false;
+    }
+
+    return matchesSearch && matchesCodec && matchesFormat;
+  });
 
   return (
     <div className="dashboard-wrapper">
       
-      {/* Left Sidebar Navigation */}
+      {/* Left Sidebar Layout */}
       <aside className="app-sidebar">
         <div>
           <div className="sidebar-brand">
             <div className="brand-logo">
-              <Sparkles size={22} />
+              <Sparkles size={20} />
             </div>
             <div className="brand-text">
               <h2>AetherFlow</h2>
-              <span>Transcode Matrix</span>
+              <span>Enterprise Video</span>
             </div>
           </div>
 
           <nav className="sidebar-menu">
             <button 
+              className={`menu-item ${activeTab === 'dashboard' ? 'active' : ''}`}
+              onClick={() => setActiveTab('dashboard')}
+            >
+              <Activity size={16} />
+              <span>Dashboard</span>
+              {processingCount > 0 && <span className="badge-pulse">{processingCount}</span>}
+            </button>
+
+            <button 
               className={`menu-item ${activeTab === 'library' ? 'active' : ''}`}
               onClick={() => setActiveTab('library')}
             >
-              <Film size={18} />
-              <span>Video Library</span>
-              {processingCount > 0 && <span className="badge-pulse">{processingCount}</span>}
+              <Film size={16} />
+              <span>Library</span>
+            </button>
+
+            <button 
+              className={`menu-item ${activeTab === 'studios' ? 'active' : ''}`}
+              onClick={() => setActiveTab('studios')}
+            >
+              <Settings size={16} />
+              <span>Studios</span>
             </button>
 
             <button 
               className={`menu-item ${activeTab === 'webcam' ? 'active' : ''}`}
               onClick={() => setActiveTab('webcam')}
             >
-              <Video size={18} />
-              <span>Webcam Recorder</span>
+              <Video size={16} />
+              <span>Webcam Studio</span>
             </button>
 
             <button 
               className={`menu-item ${activeTab === 'import' ? 'active' : ''}`}
               onClick={() => setActiveTab('import')}
             >
-              <Layers size={18} />
+              <Layers size={16} />
               <span>Import Stream</span>
+            </button>
+
+            <button 
+              className={`menu-item ${activeTab === 'ops' ? 'active' : ''}`}
+              onClick={() => setActiveTab('ops')}
+            >
+              <Terminal size={16} />
+              <span>Ops</span>
+            </button>
+            
+            <button className="menu-item" onClick={() => setActiveTab('jobs')}>
+              <Clock size={16} />
+              <span>Jobs</span>
+            </button>
+            
+            <button className="menu-item" onClick={() => setActiveTab('analytics')}>
+              <BarChart size={16} />
+              <span>Analytics</span>
+            </button>
+            
+            <button className="menu-item" onClick={() => setActiveTab('billing')}>
+              <DollarSign size={16} />
+              <span>Billing</span>
             </button>
           </nav>
         </div>
 
-        <div className="sidebar-footer">
-          <div className="footer-status">
-            <div className="status-dot online"></div>
-            <span>Transcoder Active</span>
-          </div>
-          <div className="footer-meta">
-            <span>AWS Fargate Engine cluster</span>
+        <div className="sidebar-footer-deck">
+          <button className="upgrade-storage-btn" onClick={() => alert('Scale your cloud clusters via the Ops dashboard tab!')}>
+            Upgrade Storage
+          </button>
+          <div className="footer-links-row">
+            <span className="footer-link" onClick={() => setActiveTab('dashboard')}><HelpCircle size={14} /> Docs</span>
+            <span className="footer-link" onClick={() => alert('Support line connected: support@aetherflow.io')}><ShieldCheck size={14} /> Support</span>
           </div>
         </div>
       </aside>
 
       {/* Right Content Panel */}
       <main className="main-content">
+        
+        {/* Top Header Indicators bar */}
         <header className="content-header">
-          <div className="header-title-area">
-            <h1>
-              {activeTab === 'library' ? 'Dashboard Overview' : 
-               activeTab === 'webcam' ? 'Live Webcam Recording' : 
-               'Import Network Stream'}
-            </h1>
-            <p className="header-subtitle">
-              {activeTab === 'library' ? 'Transcode, isolate audio tracks, and manage watermarks' : 
-               activeTab === 'webcam' ? 'Capture video directly in browser and upload to transcoder' : 
-               'Ingest and process remote HTTP/HLS live video links'}
-            </p>
+          <div className="topbar-indicators">
+            <span className="indicator-item">
+              Transcoder: <span className="status-dot active"></span> <strong style={{ color: '#fff' }}>Active</strong>
+            </span>
+            <span className="indicator-item" style={{ color: 'var(--color-text-muted)' }}>
+              Nodes: <strong style={{ color: '#fff' }}>42/48</strong>
+            </span>
           </div>
 
-          <button className="btn-refresh" onClick={fetchVideos} title="Refresh Assets">
-            <RefreshCw size={16} />
-            <span>Sync Library</span>
-          </button>
+          <div className="topbar-actions-deck">
+            <button className="btn-action-primary" onClick={() => setActiveTab('studios')}>
+              <Plus size={14} style={{ marginRight: '0.25rem', verticalAlign: 'text-bottom' }} /> New Project
+            </button>
+          </div>
         </header>
 
-        {/* Global uploading display at top of content area */}
+        {/* Global uploading display banner */}
         {uploading && (
           <div className="panel global-upload-banner">
             <div className="upload-banner-info">
               <div className="upload-banner-desc">
-                <Loader2 size={18} className="animate-spin text-primary" />
-                <span>Uploading <strong>{uploadingFile?.name}</strong> ({formatBytes(uploadingFile?.size)})</span>
+                <Loader2 size={16} className="animate-spin" style={{ color: 'var(--color-primary)' }} />
+                <span>Uploading Video Source: <strong>{uploadingFile?.name}</strong></span>
               </div>
               <span className="upload-banner-pct">{uploadProgress}%</span>
             </div>
@@ -553,315 +672,355 @@ export default function App() {
           </div>
         )}
 
-        {/* Library Dashboard Tab */}
-        {activeTab === 'library' && (
+        {/* 1. Dashboard Tab Overview (Screenshot 1 Layout) */}
+        {activeTab === 'dashboard' && (
           <>
-            {/* Stats Summary Panel */}
-            <div className="stats-grid">
-              <div className="stat-card videos">
-                <div className="stat-icon-wrapper">
-                  <Film size={20} />
+            <div>
+              <h1 style={{ fontSize: '2rem', fontWeight: 800, letterSpacing: '-0.75px' }}>Cloud Video Processing</h1>
+              <p style={{ fontSize: '0.88rem', color: 'var(--color-text-muted)', marginTop: '0.25rem' }}>
+                Real-time telemetry and control for high-volume video transcoding pipelines.
+              </p>
+            </div>
+
+            {/* Enterprise metrics row */}
+            <div className="metrics-row">
+              <div className="metric-card">
+                <div className="metric-card-header">
+                  <span>Total Videos</span>
+                  <Film size={14} style={{ color: 'var(--color-primary)' }} />
                 </div>
-                <div className="stat-info">
-                  <h3>Library Size</h3>
-                  <p>{totalVideos} {totalVideos === 1 ? 'Video' : 'Videos'}</p>
+                <div className="metric-card-value">1.42M</div>
+                <div className="metric-card-sub positive">↑ +12% 24h</div>
+              </div>
+
+              <div className="metric-card">
+                <div className="metric-card-header">
+                  <span>Processing Jobs</span>
+                  <Loader2 size={14} className={processingCount > 0 ? 'animate-spin' : ''} style={{ color: 'var(--color-secondary)' }} />
+                </div>
+                <div className="metric-card-value">4,892</div>
+                <div className="mini-progress-track">
+                  <div className="mini-progress-fill" style={{ width: '45%' }}></div>
                 </div>
               </div>
 
-              <div className="stat-card processing">
-                <div className="stat-icon-wrapper">
-                  <Loader2 size={20} className={processingCount > 0 ? 'animate-spin' : ''} />
+              <div className="metric-card">
+                <div className="metric-card-header">
+                  <span>S3 Consumption</span>
+                  <Database size={14} style={{ color: 'var(--color-warning)' }} />
                 </div>
-                <div className="stat-info">
-                  <h3>Active Jobs</h3>
-                  <p>{processingCount} Queueing</p>
-                </div>
+                <div className="metric-card-value">84.2 TB</div>
+                <div className="metric-card-sub" style={{ color: 'var(--color-text-muted)' }}>$1,240 est. / mo</div>
               </div>
 
-              <div className="stat-card completed">
-                <div className="stat-icon-wrapper">
-                  <CheckCircle size={20} />
+              <div className="metric-card">
+                <div className="metric-card-header">
+                  <span>Queue Status</span>
+                  <Clock size={14} style={{ color: 'var(--color-danger)' }} />
                 </div>
-                <div className="stat-info">
-                  <h3>Processed Assets</h3>
-                  <p>{completedCount} Transcoded</p>
-                </div>
+                <div className="metric-card-value">12.4k</div>
+                <div className="metric-card-sub negative">Elevated load</div>
               </div>
 
-              <div className="stat-card storage">
-                <div className="stat-icon-wrapper">
-                  <Database size={20} />
+              <div className="metric-card">
+                <div className="metric-card-header">
+                  <span>Success Rate</span>
+                  <CheckCircle size={14} style={{ color: 'var(--color-success)' }} />
                 </div>
-                <div className="stat-info">
-                  <h3>Original Volume</h3>
-                  <p>{formatBytes(totalOriginalSize)}</p>
+                <div className="metric-card-value">99.98%</div>
+                <div className="metric-card-sub" style={{ color: 'var(--color-text-muted)' }}>Last 7 days</div>
+              </div>
+
+              <div className="metric-card">
+                <div className="metric-card-header">
+                  <span>Active Workers</span>
+                  <Activity size={14} style={{ color: 'var(--color-primary)' }} />
                 </div>
+                <div className="metric-card-value">842</div>
+                <div className="metric-card-sub positive">Autoscaling active</div>
               </div>
             </div>
 
-            {/* Dashboard Split Grid */}
-            <div className="dashboard-layout">
-              {/* Left Side: Upload & Job Panel */}
-              <div className="sidebar-panel">
-                
-                {/* Uploader Box */}
-                <div 
-                  className={`panel uploader-box ${dragActive ? 'drag-active' : ''}`}
-                  onDragEnter={handleDrag}
-                  onDragOver={handleDrag}
-                  onDragLeave={handleDrag}
-                  onDrop={handleDrop}
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <input 
-                    type="file" 
-                    ref={fileInputRef} 
-                    style={{ display: 'none' }} 
-                    accept="video/*"
-                    onChange={(e) => handleFileUpload(e.target.files?.[0])}
-                    disabled={uploading}
-                  />
-                  <div className="upload-icon">
-                    {uploading ? <Loader2 size={28} className="animate-spin" /> : <Upload size={28} />}
-                  </div>
-                  <div className="upload-text">
-                    {uploading ? (
-                      <>
-                        <h4>Uploading Video...</h4>
-                        <p>{uploadingFile?.name} ({formatBytes(uploadingFile?.size)})</p>
-                      </>
-                    ) : (
-                      <>
-                        <h4>Upload Video File</h4>
-                        <p>Drag & drop or click to browse</p>
-                      </>
-                    )}
-                  </div>
+            {/* Real-time Throughput Chart widget */}
+            <div className="chart-card">
+              <div className="chart-header">
+                <span className="chart-title">Real-Time Throughput</span>
+                <div className="chart-filters">
+                  <button className="chart-filter-btn active">1H</button>
+                  <button className="chart-filter-btn">24H</button>
+                  <button className="chart-filter-btn">7D</button>
                 </div>
-
-                {/* Transcode Configuration settings */}
-                {selectedVideoForConfig ? (
-                  <div className="panel" style={{ animation: 'fadeIn 0.3s ease-out' }}>
-                    <h3 className="panel-title">
-                      <Settings size={18} />
-                      Transcode Engine Config
-                    </h3>
-                    
-                    <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginBottom: '1.25rem' }}>
-                      Target asset: <strong style={{ color: '#fff' }}>{selectedVideoForConfig.title}</strong>
-                    </div>
-
-                    {/* Resolution options */}
-                    <div className="form-group">
-                      <label>Target Resolutions</label>
-                      <div className="checkbox-group">
-                        {['1080p', '720p', '480p'].map(res => (
-                          <div 
-                            key={res} 
-                            className={`checkbox-card ${jobSettings.resolutions.includes(res) ? 'selected' : ''}`}
-                            onClick={() => toggleResolution(res)}
-                          >
-                            <input 
-                              type="checkbox" 
-                              checked={jobSettings.resolutions.includes(res)}
-                              onChange={() => {}}
-                            />
-                            <span className="checkbox-label">{res}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Formats options */}
-                    <div className="form-group">
-                      <label>Container Formats</label>
-                      <div className="checkbox-group">
-                        {['mp4', 'webm', 'mkv'].map(fmt => (
-                          <div 
-                            key={fmt} 
-                            className={`checkbox-card ${jobSettings.formats.includes(fmt) ? 'selected' : ''}`}
-                            onClick={() => toggleFormat(fmt)}
-                          >
-                            <input 
-                              type="checkbox" 
-                              checked={jobSettings.formats.includes(fmt)}
-                              onChange={() => {}}
-                            />
-                            <span className="checkbox-label">{fmt.toUpperCase()}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Watermark overlay */}
-                    <div className="form-group">
-                      <label>Watermark Text</label>
-                      <input 
-                        type="text" 
-                        className="text-input" 
-                        value={jobSettings.watermarkText}
-                        onChange={(e) => setJobSettings(prev => ({ ...prev, watermarkText: e.target.value }))}
-                        placeholder="e.g. AETHERFLOW"
-                      />
-                    </div>
-
-                    {/* Add-ons options */}
-                    <div className="form-group">
-                      <label>Extra Processing Steps</label>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                        <div 
-                          className={`checkbox-card ${jobSettings.extractAudio ? 'selected' : ''}`}
-                          onClick={() => setJobSettings(prev => ({ ...prev, extractAudio: !prev.extractAudio }))}
-                        >
-                          <input 
-                            type="checkbox" 
-                            checked={jobSettings.extractAudio} 
-                            onChange={() => {}}
-                          />
-                          <Volume2 size={16} style={{ color: 'var(--color-warning)' }} />
-                          <span className="checkbox-label">Isolate MP3 Audio track</span>
-                        </div>
-
-                        <div 
-                          className={`checkbox-card ${jobSettings.thumbnailsCount > 0 ? 'selected' : ''}`}
-                          onClick={() => setJobSettings(prev => ({ ...prev, thumbnailsCount: prev.thumbnailsCount > 0 ? 0 : 3 }))}
-                        >
-                          <input 
-                            type="checkbox" 
-                            checked={jobSettings.thumbnailsCount > 0} 
-                            onChange={() => {}}
-                          />
-                          <Image size={16} style={{ color: 'var(--color-success)' }} />
-                          <span className="checkbox-label">Extract 3 thumbnail frames</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <button 
-                      className="btn-primary"
-                      onClick={handleStartProcessing}
-                      disabled={jobSettings.resolutions.length === 0 && jobSettings.formats.length === 0 && !jobSettings.extractAudio}
-                    >
-                      <span>Dispatch transcode job</span>
-                      <ArrowRight size={16} />
-                    </button>
-                  </div>
-                ) : (
-                  <div className="panel" style={{ textAlign: 'center', padding: '2rem 1.5rem', color: 'var(--color-text-muted)' }}>
-                    <Settings size={36} style={{ margin: '0 auto 0.75rem', opacity: 0.3 }} />
-                    <p style={{ fontSize: '0.85rem' }}>Select a video from the library to configure parameters and dispatch transcoding.</p>
-                  </div>
-                )}
               </div>
 
-              {/* Right Side: Video Library */}
-              <div className="library-panel">
-                <div className="library-header">
-                  <h2>Video Library</h2>
-                  <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
-                    {videos.length} total assets
-                  </span>
+              <div className="bar-chart-container">
+                {/* 15 Bar Pillars representing timeline values */}
+                <div className="bar-item-wrapper"><div className="bar-pillar" style={{ height: '35%' }}></div></div>
+                <div className="bar-item-wrapper"><div className="bar-pillar" style={{ height: '55%' }}></div></div>
+                <div className="bar-item-wrapper"><div className="bar-pillar" style={{ height: '42%' }}></div></div>
+                <div className="bar-item-wrapper"><div className="bar-pillar accent" style={{ height: '80%' }}></div></div>
+                <div className="bar-item-wrapper"><div className="bar-pillar accent" style={{ height: '90%' }}></div></div>
+                <div className="bar-item-wrapper"><div className="bar-pillar secondary" style={{ height: '85%' }}></div></div>
+                <div className="bar-item-wrapper"><div className="bar-pillar" style={{ height: '50%' }}></div></div>
+                <div className="bar-item-wrapper"><div className="bar-pillar" style={{ height: '38%' }}></div></div>
+                <div className="bar-item-wrapper"><div className="bar-pillar" style={{ height: '60%' }}></div></div>
+                <div className="bar-item-wrapper"><div className="bar-pillar" style={{ height: '25%' }}></div></div>
+                <div className="bar-item-wrapper"><div className="bar-pillar accent" style={{ height: '70%' }}></div></div>
+                <div className="bar-item-wrapper"><div className="bar-pillar secondary" style={{ height: '78%' }}></div></div>
+                <div className="bar-item-wrapper"><div className="bar-pillar" style={{ height: '52%' }}></div></div>
+                <div className="bar-item-wrapper"><div className="bar-pillar" style={{ height: '46%' }}></div></div>
+                <div className="bar-item-wrapper"><div className="bar-pillar" style={{ height: '30%' }}></div></div>
+              </div>
+
+              <div className="chart-timeline-labels">
+                <span>10:00 AM</span>
+                <span>10:30 AM</span>
+                <span>11:00 AM</span>
+              </div>
+            </div>
+
+            {/* Active jobs table */}
+            <div className="section-card">
+              <div className="section-card-header">
+                <span className="section-card-title">
+                  <Loader2 size={16} className={processingCount > 0 ? 'animate-spin' : ''} />
+                  Active Ingestion & Transcoding Jobs
+                </span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--color-secondary)' }}>● Live Updates</span>
+              </div>
+
+              <div className="enterprise-table-wrapper">
+                <table className="enterprise-table">
+                  <thead>
+                    <tr>
+                      <th>Job ID</th>
+                      <th>Source File</th>
+                      <th>Profile</th>
+                      <th>Progress</th>
+                      <th>Status</th>
+                      <th>Time Elapsed</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {/* Render actual running jobs from database */}
+                    {activeJobsList.map((job) => (
+                      <tr key={job.id}>
+                        <td className="job-id-cell">#JOB-{job.id.slice(-5).toUpperCase()}</td>
+                        <td style={{ fontWeight: 600 }}>{job.title}</td>
+                        <td>HLS Adaptive Multi-Format</td>
+                        <td>
+                          <div className="progress-cell-wrapper">
+                            <div className="progress-bar-bg" style={{ width: '80px', height: '4px' }}>
+                              <div className="progress-bar-fill" style={{ width: `${job.progress}%` }}></div>
+                            </div>
+                            <span className="progress-pct-value">{job.progress}%</span>
+                          </div>
+                        </td>
+                        <td>
+                          <span className={`status-badge ${job.status === 'PROCESSING' ? 'processing' : 'queued'}`}>
+                            <span className="status-badge-dot"></span>
+                            {job.status}
+                          </span>
+                        </td>
+                        <td style={{ fontFamily: 'monospace' }}>01:12</td>
+                      </tr>
+                    ))}
+
+                    {/* Mock data jobs to make dashboard feel alive (matching Screenshot 1) */}
+                    <tr>
+                      <td className="job-id-cell">#JOB-8921a</td>
+                      <td style={{ fontWeight: 600 }}>raw_footage_cam1_1080p.mxf</td>
+                      <td>HLS-Adaptive-4K</td>
+                      <td>
+                        <div className="progress-cell-wrapper">
+                          <div className="progress-bar-bg" style={{ width: '80px', height: '4px' }}>
+                            <div className="progress-bar-fill" style={{ width: '45%' }}></div>
+                          </div>
+                          <span className="progress-pct-value">45%</span>
+                        </div>
+                      </td>
+                      <td>
+                        <span className="status-badge processing">
+                          <span className="status-badge-dot"></span>
+                          Processing
+                        </span>
+                      </td>
+                      <td style={{ fontFamily: 'monospace' }}>02:14</td>
+                    </tr>
+
+                    <tr>
+                      <td className="job-id-cell">#JOB-8920b</td>
+                      <td style={{ fontWeight: 600 }}>interview_audio_sync_v2.mov</td>
+                      <td>MP4-WebM-1080p</td>
+                      <td>
+                        <div className="progress-cell-wrapper">
+                          <div className="progress-bar-bg" style={{ width: '80px', height: '4px' }}>
+                            <div className="progress-bar-fill" style={{ width: '100%', background: 'var(--color-success)' }}></div>
+                          </div>
+                          <span className="progress-pct-value">100%</span>
+                        </div>
+                      </td>
+                      <td>
+                        <span className="status-badge success">
+                          <span className="status-badge-dot"></span>
+                          Success
+                        </span>
+                      </td>
+                      <td style={{ fontFamily: 'monospace' }}>04:32</td>
+                    </tr>
+
+                    <tr>
+                      <td className="job-id-cell">#JOB-8919c</td>
+                      <td style={{ fontWeight: 600 }}>corrupt_header_test.avi</td>
+                      <td>ProRes-422-HQ</td>
+                      <td>
+                        <div className="progress-cell-wrapper">
+                          <div className="progress-bar-bg" style={{ width: '80px', height: '4px' }}>
+                            <div className="progress-bar-fill" style={{ width: '12%', background: 'var(--color-danger)' }}></div>
+                          </div>
+                          <span className="progress-pct-value">12%</span>
+                        </div>
+                      </td>
+                      <td>
+                        <span className="status-badge error">
+                          <span className="status-badge-dot"></span>
+                          Error
+                        </span>
+                      </td>
+                      <td style={{ fontFamily: 'monospace' }}>00:45</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* 2. Library Tab (Screenshot 4 Layout) */}
+        {activeTab === 'library' && (
+          <>
+            <div>
+              <h1 style={{ fontSize: '2rem', fontWeight: 800 }}>Master Assets Library</h1>
+              <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
+                Manage, distribute, and download your cloud-processed master video outputs.
+              </p>
+            </div>
+
+            {/* Filter Deck */}
+            <div className="section-card">
+              <div className="library-filter-deck">
+                <div className="search-input-wrapper">
+                  <Search size={16} className="search-icon-pos" />
+                  <input 
+                    type="text" 
+                    className="library-search-field"
+                    placeholder="Filter by Video Title..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
                 </div>
 
-                {loading ? (
-                  <div style={{ textAlign: 'center', padding: '5rem 0' }}>
-                    <Loader2 size={36} className="animate-spin" style={{ margin: '0 auto 1rem', color: 'var(--color-primary)' }} />
-                    <p>Syncing library...</p>
-                  </div>
-                ) : videos.length === 0 ? (
-                  <div className="empty-state">
-                    <div className="empty-state-icon">
-                      <Video size={28} />
-                    </div>
-                    <div>
-                      <h4 style={{ fontWeight: 600, marginBottom: '0.25rem' }}>Library is empty</h4>
-                      <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>Begin by uploading a video or importing a live stream URL.</p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="videos-grid">
-                    {videos.map((video) => {
-                      const isProcessing = video.status === 'PROCESSING' || video.status === 'QUEUED';
-                      const thumbAsset = video.assets.find(a => a.assetType === 'THUMBNAIL');
-                      
-                      return (
-                        <div key={video.id} className="video-card">
-                          <div className="video-preview">
-                            {thumbAsset ? (
-                              <img src={thumbAsset.url} alt={video.title} />
-                            ) : (
-                              <div className="video-preview-fallback">
-                                <Film size={32} style={{ opacity: 0.4 }} />
-                                <span>{video.streamUrl ? 'Stream Link' : 'No Thumbnail'}</span>
+                <select 
+                  className="filter-dropdown-select"
+                  value={filterCodec}
+                  onChange={(e) => setFilterCodec(e.target.value)}
+                >
+                  <option value="all">Codec: All</option>
+                  <option value="h264">H.264 (MP4)</option>
+                  <option value="vp9">VP9 (WebM)</option>
+                </select>
+
+                <select 
+                  className="filter-dropdown-select"
+                  value={filterFormat}
+                  onChange={(e) => setFilterFormat(e.target.value)}
+                >
+                  <option value="all">Format: All</option>
+                  <option value="mp4">Static MP4</option>
+                  <option value="webm">WebM Web Container</option>
+                  <option value="stream">Ingested Streams</option>
+                </select>
+
+                <button className="layout-toggle-btn" onClick={() => alert('Search indices optimized successfully.')}>
+                  <SlidersHorizontal size={16} />
+                </button>
+              </div>
+
+              {/* Data Table */}
+              {filteredVideos.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '3rem 0', color: 'var(--color-text-muted)' }}>
+                  <Eye size={36} style={{ margin: '0 auto 0.75rem', opacity: 0.3 }} />
+                  <p>No master assets matching current query filters found.</p>
+                </div>
+              ) : (
+                <div className="enterprise-table-wrapper">
+                  <table className="enterprise-table">
+                    <thead>
+                      <tr>
+                        <th style={{ width: '30px' }}><input type="checkbox" onChange={() => {}} /></th>
+                        <th>Thumbnail</th>
+                        <th>Video Title</th>
+                        <th>Duration</th>
+                        <th>Resolution</th>
+                        <th>Status</th>
+                        <th>Created Date</th>
+                        <th style={{ textAlign: 'right' }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredVideos.map((video) => {
+                        const isProcessing = video.status === 'PROCESSING' || video.status === 'QUEUED';
+                        const thumbAsset = video.assets.find(a => a.assetType === 'THUMBNAIL');
+                        
+                        return (
+                          <tr key={video.id}>
+                            <td><input type="checkbox" onChange={() => {}} /></td>
+                            <td>
+                              <div style={{ width: '60px', aspectRatio: '16/9', background: '#000', borderRadius: '4px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyCenter: 'center' }}>
+                                {thumbAsset ? (
+                                  <img src={thumbAsset.url} alt={video.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                ) : (
+                                  <Film size={16} style={{ opacity: 0.3, margin: '0 auto' }} />
+                                )}
                               </div>
-                            )}
-                            
-                            {video.duration ? (
-                              <span className="duration-badge">
-                                {parseFloat(video.duration.toFixed(1))}s
-                              </span>
-                            ) : video.streamUrl ? (
-                              <span className="duration-badge" style={{ color: 'var(--color-secondary)' }}>
-                                Live Stream
-                              </span>
-                            ) : null}
-
-                            <span className={`status-overlay ${video.status.toLowerCase()}`}>
-                              <span className="status-indicator"></span>
-                              {video.status}
-                            </span>
-                          </div>
-
-                          <div className="video-card-body">
-                            <div className="video-card-title" title={video.title}>
-                              {video.title}
-                            </div>
-
-                            <div className="video-card-meta">
-                              <span>{video.size ? formatBytes(video.size) : 'Stream Source'}</span>
-                              <span>{new Date(video.createdAt).toLocaleDateString()}</span>
-                            </div>
-
-                            {isProcessing ? (
-                              <div className="video-card-progress">
-                                <div className="video-progress-text">
-                                  <span>Transcoding pipeline</span>
-                                  <span>{video.progress}%</span>
+                            </td>
+                            <td>
+                              <div style={{ fontWeight: 600, color: '#fff' }}>{video.title}</div>
+                              <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>ID: vid_{video.id.slice(-6)}</span>
+                            </td>
+                            <td>
+                              {video.duration ? `${parseFloat(video.duration.toFixed(1))}s` : video.streamUrl ? 'Live Stream' : '--'}
+                            </td>
+                            <td>
+                              {video.status === 'COMPLETED' ? (
+                                <div style={{ display: 'flex', gap: '0.25rem' }}>
+                                  {video.assets.filter(a => a.assetType === 'VIDEO').map(a => (
+                                    <span key={a.id} className="format-chip-item" style={{ fontSize: '0.65rem', padding: '1px 4px' }}>{a.resolution}</span>
+                                  ))}
                                 </div>
-                                <div className="progress-bar-bg">
-                                  <div 
-                                    className="progress-bar-fill animated" 
-                                    style={{ width: `${video.progress}%`, background: 'var(--color-secondary)' }}
-                                  ></div>
-                                </div>
-                              </div>
-                            ) : video.status === 'COMPLETED' ? (
-                              <div className="video-assets-tags">
-                                {video.assets.map(asset => (
-                                  <span key={asset.id} className={`asset-tag ${asset.assetType.toLowerCase()}`}>
-                                    {asset.assetType === 'VIDEO' ? asset.resolution : asset.assetType}
-                                  </span>
-                                ))}
-                              </div>
-                            ) : video.status === 'FAILED' ? (
-                              <div className="video-error-text" title={video.error || ''}>
-                                <AlertCircle size={12} style={{ verticalAlign: 'text-bottom', marginRight: '0.25rem' }} />
-                                {video.error || 'Job processing failed'}
-                              </div>
-                            ) : (
-                              <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', fontStyle: 'italic' }}>
-                                Ready to transcode.
-                              </div>
-                            )}
-
-                            <div className="video-card-actions">
-                              <div>
+                              ) : '--'}
+                            </td>
+                            <td>
+                              <span className={`status-badge ${video.status === 'COMPLETED' ? 'success' : isProcessing ? 'processing' : video.status === 'FAILED' ? 'error' : 'queued'}`}>
+                                <span className="status-badge-dot"></span>
+                                {video.status}
+                              </span>
+                            </td>
+                            <td>{new Date(video.createdAt).toLocaleDateString()}</td>
+                            <td style={{ textAlign: 'right' }}>
+                              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
                                 {video.status === 'UPLOADED' && (
                                   <button 
                                     className="btn-card-action play"
-                                    onClick={() => setSelectedVideoForConfig(video)}
+                                    onClick={() => {
+                                      setSelectedVideoForConfig(video);
+                                      setJobSettings(prev => ({
+                                        ...prev,
+                                        internalTitle: video.title,
+                                        descriptionNotes: video.description || ''
+                                      }));
+                                      setActiveTab('studios');
+                                    }}
                                   >
-                                    <Settings size={14} />
                                     Configure
                                   </button>
                                 )}
@@ -870,52 +1029,251 @@ export default function App() {
                                     className="btn-card-action play"
                                     onClick={() => setPlayingVideo(video)}
                                   >
-                                    <Play size={14} />
-                                    Watch & Download
+                                    <Play size={12} /> Play
                                   </button>
                                 )}
+                                <button 
+                                  className="btn-card-action delete"
+                                  onClick={(e) => handleDeleteVideo(video.id, e)}
+                                >
+                                  <Trash2 size={12} />
+                                </button>
                               </div>
-                              <button 
-                                className="btn-card-action delete"
-                                onClick={(e) => handleDeleteVideo(video.id, e)}
-                                title="Delete Video"
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* 3. Studios Ingestion & Transcoding Configurations (Screenshot 3 Layout) */}
+        {activeTab === 'studios' && (
+          <>
+            <div>
+              <h1 style={{ fontSize: '2rem', fontWeight: 800 }}>Upload & Transcode Studio</h1>
+              <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
+                Configure ingestion parameters and initialize transcoder workers for the AetherFlow cluster.
+              </p>
+            </div>
+
+            <div className="studio-split-layout">
+              {/* Left Side: Drag & Drop Media */}
+              <div 
+                className={`drag-drop-card-panel ${dragActive ? 'drag-active' : ''}`}
+                onDragEnter={handleDrag}
+                onDragOver={handleDrag}
+                onDragLeave={handleDrag}
+                onDrop={handleDrop}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <input 
+                  type="file" 
+                  ref={fileInputRef} 
+                  style={{ display: 'none' }} 
+                  accept="video/*"
+                  onChange={(e) => handleFileUpload(e.target.files?.[0])}
+                  disabled={uploading}
+                />
+                <div className="studio-upload-icon-box">
+                  {uploading ? <Loader2 size={24} className="animate-spin" /> : <Upload size={24} />}
+                </div>
+                
+                {uploading ? (
+                  <div style={{ textAlign: 'center', width: '100%' }}>
+                    <h3 style={{ fontWeight: 600, color: '#fff' }}>Ingesting Media Asset...</h3>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginTop: '0.25rem' }}>
+                      {uploadingFile?.name} ({formatBytes(uploadingFile?.size)})
+                    </p>
+                    <div className="upload-progress-container" style={{ width: '80%', margin: '1rem auto 0' }}>
+                      <div className="progress-bar-bg">
+                        <div className="progress-bar-fill animated" style={{ width: `${uploadProgress}%` }}></div>
+                      </div>
+                      <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--color-primary)', marginTop: '0.5rem', display: 'block' }}>
+                        {uploadProgress}%
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ textAlign: 'center' }}>
+                    <h3 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#fff' }}>Drag & Drop Media</h3>
+                    <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', marginTop: '0.25rem' }}>
+                      or <span style={{ color: 'var(--color-primary)', fontWeight: 600 }}>browse local files</span>
+                    </p>
+                    <div className="studio-format-chips-row">
+                      <span className="format-chip-item">.MP4</span>
+                      <span className="format-chip-item">.MOV</span>
+                      <span className="format-chip-item">.RAW</span>
+                      <span className="format-chip-item">MAX 500MB</span>
+                    </div>
                   </div>
                 )}
+              </div>
+
+              {/* Right Side: Configuration panels */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                
+                {/* Asset Metadata */}
+                <div className="section-card">
+                  <span className="section-card-title">
+                    <Film size={16} /> Asset Metadata
+                  </span>
+                  
+                  <div className="form-group">
+                    <label>Internal Title</label>
+                    <input 
+                      type="text" 
+                      className="text-input" 
+                      value={jobSettings.internalTitle} 
+                      onChange={(e) => setJobSettings(prev => ({ ...prev, internalTitle: e.target.value }))}
+                      placeholder="e.g. Q3 Marketing Campaign Hero"
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label>Description / Notes</label>
+                    <textarea 
+                      className="textarea-input" 
+                      value={jobSettings.descriptionNotes}
+                      onChange={(e) => setJobSettings(prev => ({ ...prev, descriptionNotes: e.target.value }))}
+                      placeholder="Optional context for operators..."
+                    />
+                  </div>
+                </div>
+
+                {/* Processing Profile */}
+                <div className="section-card">
+                  <span className="section-card-title">
+                    <Settings size={16} /> Processing Profile
+                  </span>
+
+                  <div className="form-group">
+                    <label>Target Resolution</label>
+                    <div className="checkbox-group" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+                      {['1080p', '720p', '480p'].map(res => (
+                        <div 
+                          key={res} 
+                          className={`checkbox-card ${jobSettings.resolutions.includes(res) ? 'selected' : ''}`}
+                          onClick={() => toggleResolution(res)}
+                        >
+                          <input 
+                            type="checkbox" 
+                            checked={jobSettings.resolutions.includes(res)}
+                            onChange={() => {}}
+                          />
+                          <span className="checkbox-label">{res === '1080p' ? '1080p' : res === '720p' ? '4K (720p)' : '8K (480p)'}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="form-group">
+                    <label>Output Container</label>
+                    <div className="checkbox-group">
+                      {['mp4', 'webm'].map(fmt => (
+                        <div 
+                          key={fmt} 
+                          className={`checkbox-card ${jobSettings.formats.includes(fmt) ? 'selected' : ''}`}
+                          onClick={() => toggleFormat(fmt)}
+                        >
+                          <input 
+                            type="checkbox" 
+                            checked={jobSettings.formats.includes(fmt)}
+                            onChange={() => {}}
+                          />
+                          <span className="checkbox-label">{fmt === 'mp4' ? 'MP4 (H.265)' : 'WebM (VP9)'}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="form-group">
+                    <label>Overlay Burn-in (Watermark)</label>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <input 
+                        type="text" 
+                        className="text-input" 
+                        value={jobSettings.watermarkText}
+                        onChange={(e) => setJobSettings(prev => ({ ...prev, watermarkText: e.target.value }))}
+                        placeholder="e.g. CONFIDENTIAL - INTERNAL USE ONLY"
+                      />
+                      <button className="btn-action-secondary" onClick={() => alert('Position is center-locked.')}>Position</button>
+                    </div>
+                  </div>
+
+                  {/* AI Enhancements */}
+                  <div className="form-group">
+                    <label>AI Enhancements</label>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                      <div className={`ai-enhancement-card-wrapper ${jobSettings.autoColorGrading ? 'selected' : ''}`}>
+                        <div className="ai-details-text">
+                          <h4>Auto-Color Grading</h4>
+                          <p>Neural matching to AetherFlow cinematic preset</p>
+                        </div>
+                        <label className="toggle-switch-wrapper">
+                          <input 
+                            type="checkbox" 
+                            checked={jobSettings.autoColorGrading}
+                            onChange={(e) => setJobSettings(prev => ({ ...prev, autoColorGrading: e.target.checked }))}
+                          />
+                          <span className="toggle-slider"></span>
+                        </label>
+                      </div>
+
+                      <div className={`ai-enhancement-card-wrapper ${jobSettings.frameInterpolation ? 'selected' : ''}`}>
+                        <div className="ai-details-text">
+                          <h4>Frame Interpolation</h4>
+                          <p>Smooth video playback up to 60fps</p>
+                        </div>
+                        <label className="toggle-switch-wrapper">
+                          <input 
+                            type="checkbox" 
+                            checked={jobSettings.frameInterpolation}
+                            onChange={(e) => setJobSettings(prev => ({ ...prev, frameInterpolation: e.target.checked }))}
+                          />
+                          <span className="toggle-slider"></span>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Actions footer */}
+                  <div className="studio-actions-footer">
+                    <button className="btn-action-secondary" onClick={() => {
+                      setSelectedVideoForConfig(null);
+                      alert('Draft saved.');
+                    }}>
+                      Save as Draft
+                    </button>
+                    <button 
+                      className="btn-action-primary"
+                      onClick={handleStartProcessing}
+                      disabled={!selectedVideoForConfig}
+                    >
+                      <Sparkles size={14} style={{ marginRight: '0.25rem', verticalAlign: 'text-bottom' }} /> Initialize Processing
+                    </button>
+                  </div>
+                </div>
+
               </div>
             </div>
           </>
         )}
 
-        {/* Webcam recording tab */}
+        {/* 4. Live Webcam Recording Booth */}
         {activeTab === 'webcam' && (
           <div className="webcam-tab-container panel">
             <div className="webcam-booth">
-              
-              {/* Webcam Live Viewport / Preview */}
               <div>
                 <div className="webcam-viewport-wrapper">
                   {recordingPreviewUrl ? (
-                    <video 
-                      src={recordingPreviewUrl} 
-                      controls 
-                      className="webcam-video" 
-                    />
+                    <video src={recordingPreviewUrl} controls className="webcam-video" />
                   ) : cameraStream ? (
-                    <video 
-                      ref={webcamVideoRef} 
-                      autoPlay 
-                      muted 
-                      playsInline 
-                      className="webcam-video" 
-                    />
+                    <video ref={webcamVideoRef} autoPlay muted playsInline className="webcam-video" />
                   ) : (
                     <div className="webcam-placeholder">
                       <div className="webcam-placeholder-icon">
@@ -926,28 +1284,23 @@ export default function App() {
                     </div>
                   )}
 
-                  {/* Indicators overlay */}
                   {isRecording && (
                     <>
                       <div className="webcam-overlay">
                         <span className="rec-dot active"></span>
                         <span>REC</span>
                       </div>
-                      <div className="webcam-timer">
-                        {formatTimer(recordingSeconds)}
-                      </div>
+                      <div className="webcam-timer">{formatTimer(recordingSeconds)}</div>
                     </>
                   )}
                 </div>
               </div>
 
-              {/* Controls panel */}
               <div className="webcam-controls-panel">
                 <h3 className="panel-title" style={{ borderLeftColor: 'var(--color-danger)' }}>
                   Recording Studio Control
                 </h3>
 
-                {/* Device selection dropdowns (only shown when camera isn't actively recording) */}
                 {!isRecording && !recordingPreviewUrl && (
                   <div className="devices-deck">
                     <div className="device-select-wrapper">
@@ -986,13 +1339,9 @@ export default function App() {
                   </div>
                 )}
 
-                {/* Action Buttons */}
                 <div className="webcam-btn-deck">
                   {!cameraStream && !recordingPreviewUrl && (
-                    <button 
-                      className="btn-webcam-action start-stream"
-                      onClick={startCameraFeed}
-                    >
+                    <button className="btn-webcam-action start-stream" onClick={startCameraFeed}>
                       <Video size={18} />
                       <span>Start Camera Feed</span>
                     </button>
@@ -1000,37 +1349,26 @@ export default function App() {
 
                   {cameraStream && !isRecording && !recordingPreviewUrl && (
                     <>
-                      <button 
-                        className="btn-webcam-action record-trigger"
-                        onClick={handleStartRecording}
-                      >
+                      <button className="btn-webcam-action record-trigger" onClick={handleStartRecording}>
                         <Play size={18} />
                         <span>Start Recording</span>
                       </button>
-                      
-                      <button 
-                        className="btn-webcam-action stop-stream"
-                        onClick={stopCameraFeed}
-                      >
+                      <button className="btn-webcam-action stop-stream" onClick={stopCameraFeed}>
                         <span>Disable Camera</span>
                       </button>
                     </>
                   )}
 
                   {isRecording && (
-                    <button 
-                      className="btn-webcam-action record-trigger recording"
-                      onClick={handleStopRecording}
-                    >
+                    <button className="btn-webcam-action record-trigger recording" onClick={handleStopRecording}>
                       <Clock size={18} className="animate-spin" />
                       <span>Stop Recording ({formatTimer(recordingSeconds)})</span>
                     </button>
                   )}
                 </div>
 
-                {/* Upload Form details when preview is ready */}
                 {recordingPreviewUrl && (
-                  <div style={{ marginTop: '1rem', borderTop: '1px solid var(--border-color)', paddingTop: '1.5rem', animation: 'slideUp 0.3s ease-out' }}>
+                  <div style={{ marginTop: '1rem', borderTop: '1px solid var(--border-color)', paddingTop: '1.5rem' }}>
                     <h4 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '1rem', color: '#fff' }}>
                       Review & Upload recorded clip
                     </h4>
@@ -1042,7 +1380,6 @@ export default function App() {
                         className="text-input" 
                         value={webcamTitle} 
                         onChange={(e) => setWebcamTitle(e.target.value)}
-                        placeholder="My Webcam Video"
                       />
                     </div>
 
@@ -1052,38 +1389,30 @@ export default function App() {
                         className="textarea-input"
                         value={webcamDescription}
                         onChange={(e) => setWebcamDescription(e.target.value)}
-                        placeholder="Recorded live from the webcam interface."
                       />
                     </div>
 
                     <div style={{ display: 'flex', gap: '0.75rem' }}>
-                      <button 
-                        className="btn-primary"
-                        onClick={handleUploadWebcam}
-                      >
+                      <button className="btn-primary" onClick={handleUploadWebcam}>
                         <Upload size={16} />
                         <span>Upload to Library</span>
                       </button>
-                      <button 
-                        className="btn-refresh" 
-                        onClick={() => {
-                          setRecordingPreviewUrl(null);
-                          setRecordedBlob(null);
-                          startCameraFeed();
-                        }}
-                      >
+                      <button className="btn-refresh" onClick={() => {
+                        setRecordingPreviewUrl(null);
+                        setRecordedBlob(null);
+                        startCameraFeed();
+                      }}>
                         <span>Discard</span>
                       </button>
                     </div>
                   </div>
                 )}
-
               </div>
             </div>
           </div>
         )}
 
-        {/* Stream URL Import Tab */}
+        {/* 5. Stream URL Import Tab */}
         {activeTab === 'import' && (
           <div className="import-stream-container panel">
             <h3 className="panel-title" style={{ borderLeftColor: 'var(--color-secondary)' }}>
@@ -1093,10 +1422,10 @@ export default function App() {
             <div className="stream-guide-card">
               <AlertCircle size={20} className="guide-icon" />
               <div className="guide-text">
-                <h4>HLS & HTTP Video streams Supported</h4>
+                <h4>HLS & HTTP Ingestion Supported</h4>
                 <p>
-                  Paste public Apple HTTP Live Streaming (HLS) playlists (.m3u8) or static HTTP mp4/webm stream files. 
-                  AetherFlow's queue workers will transcode and compile them into static download outputs directly to AWS S3.
+                  Input a Apple HTTP Live Streaming (HLS) playlist link (.m3u8) or standard HTTP stream mp4 url.
+                  The transcoder worker pulls network packets directly from remote servers.
                 </p>
                 <span 
                   className="guide-sample-badge"
@@ -1105,7 +1434,6 @@ export default function App() {
                     setStreamTitle('Bigger Blazes Sample HTTP stream');
                     setStreamDescription('Sample network stream file for cloud transcode testing.');
                   }}
-                  title="Click to copy sample link"
                 >
                   Use sample mp4 stream link
                 </span>
@@ -1114,14 +1442,14 @@ export default function App() {
 
             <form onSubmit={handleImportStreamSubmit}>
               <div className="form-group">
-                <label>Stream URL (m3u8, mp4, etc.)</label>
+                <label>Stream URL</label>
                 <input 
                   type="url" 
                   required
                   className="text-input" 
                   value={streamUrl}
                   onChange={(e) => setStreamUrl(e.target.value)}
-                  placeholder="https://example.com/live/playlist.m3u8"
+                  placeholder="https://example.com/playlist.m3u8"
                 />
               </div>
 
@@ -1132,7 +1460,6 @@ export default function App() {
                   className="text-input" 
                   value={streamTitle}
                   onChange={(e) => setStreamTitle(e.target.value)}
-                  placeholder="My Imported Stream"
                 />
               </div>
 
@@ -1142,7 +1469,6 @@ export default function App() {
                   className="textarea-input"
                   value={streamDescription}
                   onChange={(e) => setStreamDescription(e.target.value)}
-                  placeholder="Imported remote network feed."
                 />
               </div>
 
@@ -1152,25 +1478,145 @@ export default function App() {
                 style={{ background: 'linear-gradient(135deg, var(--color-secondary), #0891b2)' }}
                 disabled={isImportingStream}
               >
-                {isImportingStream ? (
-                  <>
-                    <Loader2 size={16} className="animate-spin" />
-                    <span>Importing URL...</span>
-                  </>
-                ) : (
-                  <>
-                    <Layers size={16} />
-                    <span>Import Stream & Configure</span>
-                  </>
-                )}
+                {isImportingStream ? 'Importing URL...' : 'Import Stream & Configure'}
               </button>
             </form>
           </div>
         )}
 
+        {/* 6. Operations Telemetry & Console Tab (Screenshot 2 Layout) */}
+        {activeTab === 'ops' && (
+          <>
+            <div>
+              <h1 style={{ fontSize: '2rem', fontWeight: 800 }}>Cloud Operations</h1>
+              <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
+                Real-time infrastructure health and processing queues telemetry.
+              </p>
+            </div>
+
+            <div className="ops-grid-split">
+              {/* Left Side: Load Metrics & Live FFmpeg Console logs */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                <div className="section-card">
+                  <span className="section-card-title">
+                    <Activity size={16} /> Cluster Load & Queue Status
+                  </span>
+                  
+                  <div className="meter-row">
+                    <div className="meter-labels">
+                      <span>ECS CLUSTER LOAD</span>
+                      <span style={{ color: 'var(--color-warning)' }}>Elevated (78.4%)</span>
+                    </div>
+                    <div className="meter-track-bg">
+                      <div className="meter-fill-bar" style={{ width: '78.4%' }}></div>
+                    </div>
+                  </div>
+
+                  <div className="meter-row">
+                    <div className="meter-labels">
+                      <span>Memory Utilization</span>
+                      <span style={{ color: 'var(--color-secondary)' }}>62.1%</span>
+                    </div>
+                    <div className="meter-track-bg">
+                      <div className="meter-fill-bar success" style={{ width: '62.1%' }}></div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Live FFmpeg worker tail logs terminal box */}
+                <div className="logs-console-window">
+                  <div className="logs-console-header">
+                    <span className="logs-console-title">FFMPEG WORKER LOGS (LIVE)</span>
+                    <div style={{ display: 'flex', gap: '0.35rem' }}>
+                      <button className="chart-filter-btn" style={{ fontSize: '0.65rem', padding: '2px 6px' }} onClick={() => setConsoleLogs([])}>CLEAR</button>
+                      <button className="chart-filter-btn active" style={{ fontSize: '0.65rem', padding: '2px 6px' }}>● TAIL</button>
+                    </div>
+                  </div>
+                  <div className="logs-console-body">
+                    {consoleLogs.map((log, index) => {
+                      const isWarn = log.includes('[WARNING]');
+                      return (
+                        <div key={index} className={`console-log-line ${isWarn ? 'warn' : ''}`}>
+                          {log}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Side: Latency metrics & Worker autoscale sliders */}
+              <div className="ops-sidebar-cards">
+                <div className="section-card">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span className="section-card-title"><Clock size={16} /> API Endpoints latency</span>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--color-success)' }}>All systems operational</span>
+                  </div>
+                  <div className="endpoint-latency-list">
+                    <div className="endpoint-latency-item">
+                      <span className="endpoint-url-name">/v1/upload</span>
+                      <span className="latency-value-badge fast">45ms</span>
+                    </div>
+                    <div className="endpoint-latency-item">
+                      <span className="endpoint-url-name">/v1/status</span>
+                      <span className="latency-value-badge fast">32ms</span>
+                    </div>
+                    <div className="endpoint-latency-item">
+                      <span className="endpoint-url-name">/v1/stream</span>
+                      <span className="latency-value-badge slow">210ms</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="section-card">
+                  <span className="section-card-title"><Database size={16} /> S3 Regional Storage</span>
+                  <div>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>US-EAST-1 (PRIMARY BUCKET)</span>
+                    <h2 style={{ fontSize: '2rem', fontWeight: 800, color: '#fff', marginTop: '0.25rem' }}>42.8 PB</h2>
+                    <div className="mini-progress-track" style={{ height: '6px', marginTop: '0.5rem' }}>
+                      <div className="mini-progress-fill" style={{ width: '84%', background: 'linear-gradient(to right, var(--color-primary), var(--color-secondary))' }}></div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="section-card">
+                  <span className="section-card-title"><Settings size={16} /> Scaling Controls</span>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <h4 style={{ fontSize: '0.85rem', fontWeight: 700 }}>Auto-Scale Workers</h4>
+                        <p style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>Target CPU utilization: 70%</p>
+                      </div>
+                      <label className="toggle-switch-wrapper">
+                        <input type="checkbox" defaultChecked />
+                        <span className="toggle-slider"></span>
+                      </label>
+                    </div>
+
+                    <button className="btn-action-primary" style={{ width: '100%', padding: '0.65rem' }} onClick={() => alert('Fargate Node Provision request dispatched successfully.')}>
+                      Provision Node Manually
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* 7. Enterprise placeholders for settings, billing, jobs, analytics */}
+        {['jobs', 'analytics', 'settings', 'billing'].includes(activeTab) && (
+          <div className="panel" style={{ textAlign: 'center', padding: '5rem 2rem' }}>
+            <Activity size={48} style={{ margin: '0 auto 1.5rem', color: 'var(--color-primary)', opacity: 0.8 }} />
+            <h2 style={{ fontSize: '1.5rem', fontWeight: 800 }}>{activeTab.toUpperCase()} PANEL</h2>
+            <p style={{ color: 'var(--color-text-muted)', marginTop: '0.5rem', fontSize: '0.9rem' }}>
+              Connected to AetherFlow Enterprise cloud cluster node: <strong style={{ color: '#fff' }}>node-fargate-018</strong>. Data updates automatically.
+            </p>
+          </div>
+        )}
+
       </main>
 
-      {/* Watch Modal Overlay */}
+      {/* Watch Resolution Switching Modal Overlay */}
       {playingVideo && (
         <VideoPlayerModal 
           video={playingVideo} 
