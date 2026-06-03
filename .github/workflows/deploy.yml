@@ -38,8 +38,7 @@ jobs:
           ECR_REPOSITORY: video-api
           IMAGE_TAG: latest
         run: |
-          aws ecr describe-repositories --repository-names $ECR_REPOSITORY --region eu-north-1 || \
-            aws ecr create-repository --repository-name $ECR_REPOSITORY --region eu-north-1
+          aws ecr create-repository --repository-name $ECR_REPOSITORY --region eu-north-1 || true
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG ./backend
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 
@@ -50,8 +49,7 @@ jobs:
           ECR_REPOSITORY: video-worker
           IMAGE_TAG: latest
         run: |
-          aws ecr describe-repositories --repository-names $ECR_REPOSITORY --region eu-north-1 || \
-            aws ecr create-repository --repository-name $ECR_REPOSITORY --region eu-north-1
+          aws ecr create-repository --repository-name $ECR_REPOSITORY --region eu-north-1 || true
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG ./worker
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 
