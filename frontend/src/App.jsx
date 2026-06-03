@@ -118,6 +118,23 @@ export default function App() {
     frameInterpolation: true
   });
 
+  const [apiLatencies, setApiLatencies] = useState({
+    upload: 45,
+    status: 32,
+    stream: 210
+  });
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setApiLatencies(prev => ({
+        upload: Math.max(15, prev.upload + Math.floor(Math.random() * 7) - 3),
+        status: Math.max(10, prev.status + Math.floor(Math.random() * 5) - 2),
+        stream: Math.max(80, prev.stream + Math.floor(Math.random() * 21) - 10)
+      }));
+    }, 3000);
+    return () => clearInterval(interval);
+  }, []);
+
   const toggleImportResolution = (res) => {
     setImportSettings(prev => {
       const resolutions = prev.resolutions.includes(res)
@@ -342,15 +359,35 @@ export default function App() {
     if (activeTab === 'ops' && currentView === 'console') {
       timer = setInterval(() => {
         const timestamp = new Date().toLocaleTimeString();
-        const randFrame = Math.floor(Math.random() * 1000) + 120;
-        const randFps = Math.floor(Math.random() * 15) + 38;
-        const randSize = Math.floor(Math.random() * 4000) + 500;
-        const randSpeed = (Math.random() * 1.5 + 1.2).toFixed(1);
         const timestampMarker = `[${new Date().toISOString().split('T')[0]} ${timestamp}]`;
         
-        let newLog = `${timestampMarker} frame= ${randFrame} fps= ${randFps} q=28.0 size= ${randSize}kB time=00:00:30.00 bitrate= 838.8kbits/s speed= ${randSpeed}x`;
-        if (Math.random() > 0.85) {
-          newLog = `${timestampMarker} [WARNING] non-monotonous DTS in output stream 0:1; previous: 1420, current: 1420; changing to 1421.`;
+        let newLog = '';
+        if (activeJobsList.length > 0) {
+          const activeJob = activeJobsList[Math.floor(Math.random() * activeJobsList.length)];
+          const randFrame = Math.floor(Math.random() * 120) + 240;
+          const randFps = Math.floor(Math.random() * 8) + 24;
+          const randSpeed = (Math.random() * 0.5 + 1.2).toFixed(1);
+          const mockSize = Math.floor((activeJob.progress || 1) * 35);
+          
+          if (activeJob.progress < 5) {
+            newLog = `${timestampMarker} [INFO] [JOB-${activeJob.id.slice(-5).toUpperCase()}] Initializing FFmpeg filtergraph overlay...`;
+          } else if (activeJob.progress > 95) {
+            newLog = `${timestampMarker} [INFO] [JOB-${activeJob.id.slice(-5).toUpperCase()}] Writing S3 output asset chunk... completed.`;
+          } else {
+            newLog = `${timestampMarker} [JOB-${activeJob.id.slice(-5).toUpperCase()}] frame= ${randFrame} fps= ${randFps} q=28.0 size= ${mockSize}kB time=00:00:30.00 speed= ${randSpeed}x`;
+          }
+        } else {
+          // Idle state log
+          const rand = Math.random();
+          if (rand > 0.6) {
+            newLog = `${timestampMarker} [WORKER] Queue engine standby. Listening for cluster Redis broker stream events...`;
+          } else if (rand > 0.3) {
+            const cpu = (Math.random() * 2 + 1).toFixed(1);
+            const ram = (Math.random() * 0.5 + 12.1).toFixed(1);
+            newLog = `${timestampMarker} [SYSTEM] node-fargate-018: CPU load: ${cpu}%, RAM free: ${ram} GB.`;
+          } else {
+            newLog = `${timestampMarker} [INFO] Health status ok: API latency = ${apiLatencies.status}ms`;
+          }
         }
         
         setConsoleLogs(prev => [...prev.slice(-18), newLog]);
@@ -359,7 +396,7 @@ export default function App() {
     return () => {
       if (timer) clearInterval(timer);
     };
-  }, [activeTab, currentView]);
+  }, [activeTab, currentView, activeJobsList, apiLatencies]);
 
   // Authenticate submit handler
   const handleAuthSubmit = (e) => {
@@ -2199,123 +2236,135 @@ export default function App() {
                     </form>
                   </div>
                 </div>
-              </>
-            )}
-
-            {/* 5. Operations Telemetry & Console Tab (Screenshot 2 Layout) */}
-            {activeTab === 'ops' && (
-              <>
-                <div>
-                  <h1 style={{ fontSize: '2rem', fontWeight: 800 }}>Cloud Operations</h1>
-                  <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
-                    Real-time infrastructure health and processing queues telemetry.
-                  </p>
-                </div>
-
-                <div className="ops-grid-split">
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                    <div className="section-card">
-                      <span className="section-card-title">
-                        <Activity size={16} /> Cluster Load & Queue Status
-                      </span>
-                      
-                      <div className="meter-row">
-                        <div className="meter-labels">
-                          <span>ECS CLUSTER LOAD</span>
-                          <span style={{ color: 'var(--color-warning)' }}>Elevated (78.4%)</span>
-                        </div>
-                        <div className="meter-track-bg">
-                          <div className="meter-fill-bar" style={{ width: '78.4%' }}></div>
-                        </div>
-                      </div>
-
-                      <div className="meter-row">
-                        <div className="meter-labels">
-                          <span>Memory Utilization</span>
-                          <span style={{ color: 'var(--color-secondary)' }}>62.1%</span>
-                        </div>
-                        <div className="meter-track-bg">
-                          <div className="meter-fill-bar success" style={{ width: '62.1%' }}></div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="logs-console-window">
-                      <div className="logs-console-header">
-                        <span className="logs-console-title">FFMPEG WORKER LOGS (LIVE)</span>
-                        <div style={{ display: 'flex', gap: '0.35rem' }}>
-                          <button className="chart-filter-btn" style={{ fontSize: '0.65rem', padding: '2px 6px' }} onClick={() => setConsoleLogs([])}>CLEAR</button>
-                          <button className="chart-filter-btn active" style={{ fontSize: '0.65rem', padding: '2px 6px' }}>● TAIL</button>
-                        </div>
-                      </div>
-                      <div className="logs-console-body">
-                        {consoleLogs.map((log, index) => {
-                          const isWarn = log.includes('[WARNING]');
-                          return (
-                            <div key={index} className={`console-log-line ${isWarn ? 'warn' : ''}`}>
-                              {log}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
+                   {/* 5. Operations Telemetry & Console Tab (Screenshot 2 Layout) */}
+            {activeTab === 'ops' && (() => {
+              const ecsClusterLoad = processingCount > 0 ? Math.min(98.5, 12.4 + (processingCount * 18.5)) : 10.2;
+              const memoryUtil = processingCount > 0 ? Math.min(92.4, 28.2 + (processingCount * 11.3)) : 24.6;
+              const s3UsagePercent = Math.min(100, Math.max(1, (totalS3Size / (1024 * 1024 * 1024 * 50)) * 100)); // util vs 50GB target
+              return (
+                <>
+                  <div>
+                    <h1 style={{ fontSize: '2rem', fontWeight: 800 }}>Cloud Operations</h1>
+                    <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
+                      Real-time infrastructure health and processing queues telemetry.
+                    </p>
                   </div>
 
-                  <div className="ops-sidebar-cards">
-                    <div className="section-card">
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span className="section-card-title"><Clock size={16} /> API Endpoints latency</span>
-                        <span style={{ fontSize: '0.75rem', color: 'var(--color-success)' }}>All systems operational</span>
-                      </div>
-                      <div className="endpoint-latency-list">
-                        <div className="endpoint-latency-item">
-                          <span className="endpoint-url-name">/v1/upload</span>
-                          <span className="latency-value-badge fast">45ms</span>
-                        </div>
-                        <div className="endpoint-latency-item">
-                          <span className="endpoint-url-name">/v1/status</span>
-                          <span className="latency-value-badge fast">32ms</span>
-                        </div>
-                        <div className="endpoint-latency-item">
-                          <span className="endpoint-url-name">/v1/stream</span>
-                          <span className="latency-value-badge slow">210ms</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="section-card">
-                      <span className="section-card-title"><Database size={16} /> S3 Regional Storage</span>
-                      <div>
-                        <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>US-EAST-1 (PRIMARY BUCKET)</span>
-                        <h2 style={{ fontSize: '2rem', fontWeight: 800, color: '#fff', marginTop: '0.25rem' }}>42.8 PB</h2>
-                        <div className="mini-progress-track" style={{ height: '6px', marginTop: '0.5rem' }}>
-                          <div className="mini-progress-fill" style={{ width: '84%', background: 'linear-gradient(to right, var(--color-primary), var(--color-secondary))' }}></div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="section-card">
-                      <span className="section-card-title"><Settings size={16} /> Scaling Controls</span>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <div>
-                            <h4 style={{ fontSize: '0.85rem', fontWeight: 700 }}>Auto-Scale Workers</h4>
-                            <p style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>Target CPU utilization: 70%</p>
+                  <div className="ops-grid-split" style={{ marginTop: '1.5rem' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                      <div className="section-card">
+                        <span className="section-card-title">
+                          <Activity size={16} /> Cluster Load & Queue Status
+                        </span>
+                        
+                        <div className="meter-row">
+                          <div className="meter-labels">
+                            <span>ECS CLUSTER LOAD</span>
+                            <span style={{ color: ecsClusterLoad > 75 ? 'var(--color-warning)' : 'var(--color-success)' }}>
+                              {ecsClusterLoad > 75 ? 'Elevated' : 'Normal'} ({ecsClusterLoad.toFixed(1)}%)
+                            </span>
                           </div>
-                          <label className="toggle-switch-wrapper">
-                            <input type="checkbox" defaultChecked />
-                            <span className="toggle-slider"></span>
-                          </label>
+                          <div className="meter-track-bg">
+                            <div className="meter-fill-bar" style={{ width: `${ecsClusterLoad}%` }}></div>
+                          </div>
                         </div>
 
-                        <button className="btn-action-primary" style={{ width: '100%', padding: '0.65rem' }} onClick={() => alert('Fargate Node Provision request dispatched successfully.')}>
-                          Provision Node Manually
-                        </button>
+                        <div className="meter-row">
+                          <div className="meter-labels">
+                            <span>Memory Utilization</span>
+                            <span style={{ color: 'var(--color-secondary)' }}>{memoryUtil.toFixed(1)}%</span>
+                          </div>
+                          <div className="meter-track-bg">
+                            <div className="meter-fill-bar success" style={{ width: `${memoryUtil}%` }}></div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="logs-console-window">
+                        <div className="logs-console-header">
+                          <span className="logs-console-title">FFMPEG WORKER LOGS (LIVE)</span>
+                          <div style={{ display: 'flex', gap: '0.35rem' }}>
+                            <button className="chart-filter-btn" style={{ fontSize: '0.65rem', padding: '2px 6px' }} onClick={() => setConsoleLogs([])}>CLEAR</button>
+                            <button className="chart-filter-btn active" style={{ fontSize: '0.65rem', padding: '2px 6px' }}>● TAIL</button>
+                          </div>
+                        </div>
+                        <div className="logs-console-body">
+                          {consoleLogs.map((log, index) => {
+                            const isWarn = log.includes('[WARNING]');
+                            return (
+                              <div key={index} className={`console-log-line ${isWarn ? 'warn' : ''}`}>
+                                {log}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="ops-sidebar-cards">
+                      <div className="section-card">
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span className="section-card-title"><Clock size={16} /> API Endpoints latency</span>
+                          <span style={{ fontSize: '0.75rem', color: 'var(--color-success)' }}>All systems operational</span>
+                        </div>
+                        <div className="endpoint-latency-list">
+                          <div className="endpoint-latency-item">
+                            <span className="endpoint-url-name">POST /api/videos/upload</span>
+                            <span className="latency-value-badge fast">{apiLatencies.upload}ms</span>
+                          </div>
+                          <div className="endpoint-latency-item">
+                            <span className="endpoint-url-name">GET /api/videos</span>
+                            <span className="latency-value-badge fast">{apiLatencies.status}ms</span>
+                          </div>
+                          <div className="endpoint-latency-item">
+                            <span className="endpoint-url-name">POST /api/videos/import-url</span>
+                            <span className="latency-value-badge slow" style={{ color: apiLatencies.stream > 150 ? 'var(--color-warning)' : 'var(--color-secondary)' }}>
+                              {apiLatencies.stream}ms
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="section-card">
+                        <span className="section-card-title"><Database size={16} /> S3 Regional Storage</span>
+                        <div>
+                          <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>US-EAST-1 (PRIMARY BUCKET)</span>
+                          <h2 style={{ fontSize: '2rem', fontWeight: 800, color: '#fff', marginTop: '0.25rem' }}>
+                            {formatBytes(totalS3Size)}
+                          </h2>
+                          <div className="mini-progress-track" style={{ height: '6px', marginTop: '0.5rem' }}>
+                            <div className="mini-progress-fill" style={{ width: `${s3UsagePercent}%`, background: 'linear-gradient(to right, var(--color-primary), var(--color-secondary))' }}></div>
+                          </div>
+                          <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', marginTop: '0.35rem', display: 'block' }}>
+                            Utilization: {s3UsagePercent.toFixed(2)}% of 50 GB Target
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="section-card">
+                        <span className="section-card-title"><Settings size={16} /> Scaling Controls</span>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div>
+                              <h4 style={{ fontSize: '0.85rem', fontWeight: 700 }}>Auto-Scale Workers</h4>
+                              <p style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>Target CPU utilization: 70%</p>
+                            </div>
+                            <label className="toggle-switch-wrapper">
+                              <input type="checkbox" defaultChecked />
+                              <span className="toggle-slider"></span>
+                            </label>
+                          </div>
+
+                          <button className="btn-action-primary" style={{ width: '100%', padding: '0.65rem' }} onClick={() => alert(`Fargate Node Provision request dispatched successfully. Scaled active Fargate worker count to ${processingCount + 1}.`)}>
+                            Provision Node Manually
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              </>
+                </>
+              );
+            })()}           </>
             )}
 
             {/* 6. Enterprise placeholders for settings, billing, jobs, analytics */}
