@@ -1,4 +1,4 @@
-# 🌌 AetherFlow — Cloud Video Transcoding Matrix
+# 🌌 NebulaStream — Cloud Video Transcoding Matrix
 
 [![Node.js](https://img.shields.io/badge/Node.js-v18.x-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![React](https://img.shields.io/badge/React-v18.x-61DAFB?logo=react&logoColor=black)](https://react.dev/)
@@ -9,7 +9,7 @@
 [![AWS](https://img.shields.io/badge/AWS-ECS_Fargate_/_S3-232F3E?logo=amazon-aws&logoColor=white)](https://aws.amazon.com)
 [![FFmpeg](https://img.shields.io/badge/FFmpeg-Engine-007800?logo=ffmpeg&logoColor=white)](https://ffmpeg.org)
 
-A production-grade, containerized, cloud-scale **Video Processing & Transcoding System** designed with an ultra-premium Obsidian Glassmorphic dashboard. AetherFlow features direct webcam/microphone recording, remote stream URL ingestion (HLS / HTTP direct link), custom text watermarking, audio track extraction, and dynamic thumbnail generation. 
+A production-grade, containerized, cloud-scale **Video Processing & Transcoding System** designed with an ultra-premium Obsidian Glassmorphic dashboard. NebulaStream features direct webcam/microphone recording, remote stream URL ingestion (HLS / HTTP direct link), custom text watermarking, audio track extraction, and dynamic thumbnail generation. 
 
 ---
 
@@ -134,13 +134,13 @@ To deploy the API and Worker containers to AWS ECS Fargate and leverage AWS S3 f
 
 ```env
 # Database & Broker
-DATABASE_URL="mongodb+srv://<user>:<password>@cluster0.mongodb.net/aetherflow"
+DATABASE_URL="mongodb+srv://<user>:<password>@cluster0.mongodb.net/nebulastream"
 REDIS_URL="rediss://<elasticache-redis-tls-endpoint>:6379"
 
 # Storage Configuration
 STORAGE_TYPE="s3"
 AWS_REGION="eu-north-1"
-AWS_S3_BUCKET="aetherflow-assets"
+AWS_S3_BUCKET="nebulastream-assets"
 AWS_ACCESS_KEY_ID="AKIAxxxxxxxxxxxx"
 AWS_SECRET_ACCESS_KEY="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
 ```
@@ -166,7 +166,7 @@ AWS_SECRET_ACCESS_KEY="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
   ```json
   {
     "id": "603dcae32c81d31a54b9d09a",
-    "title": "AetherFlow Introduction",
+    "title": "NebulaStream Introduction",
     "description": "Cloud system demo",
     "originalName": "intro.mp4",
     "mimeType": "video/mp4",
@@ -219,7 +219,7 @@ AWS_SECRET_ACCESS_KEY="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
   {
     "resolutions": ["1080p", "720p", "480p"],
     "formats": ["mp4", "webm"],
-    "watermarkText": "AETHERFLOW INTERNAL",
+    "watermarkText": "NEBULASTREAM INTERNAL",
     "extractAudio": true,
     "thumbnailsCount": 3
   }

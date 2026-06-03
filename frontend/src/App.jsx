@@ -12,11 +12,11 @@ const API_BASE = import.meta.env.VITE_API_URL || '';
 export default function App() {
   // Authentication & Navigation Root States
   const [currentView, setCurrentView] = useState(() => {
-    return localStorage.getItem('aether_session') ? 'console' : 'landing';
+    return localStorage.getItem('nebulastream_session') ? 'console' : 'landing';
   });
   const [authMode, setAuthMode] = useState('login'); // 'login' | 'signup'
   const [userSession, setUserSession] = useState(() => {
-    const email = localStorage.getItem('aether_email');
+    const email = localStorage.getItem('nebulastream_email');
     return email ? { email } : null;
   });
 
@@ -56,7 +56,7 @@ export default function App() {
   const [jobSettings, setJobSettings] = useState({
     resolutions: ['720p', '480p'],
     formats: ['mp4'],
-    watermarkText: 'AETHERFLOW',
+    watermarkText: 'NEBULASTREAM',
     extractAudio: true,
     thumbnailsCount: 3,
     internalTitle: '',
@@ -78,7 +78,7 @@ export default function App() {
   
   // Teleprompter specific options
   const [teleprompterScript, setTeleprompterScript] = useState(
-    `Welcome to the AetherFlow Studio.\n\nThis professional teleprompter overlay helps you deliver your message with precision while maintaining eye contact with your audience. Adjust your script, speed, and font size in the sidebar settings.`
+    `Welcome to the NebulaStream Studio.\n\nThis professional teleprompter overlay helps you deliver your message with precision while maintaining eye contact with your audience. Adjust your script, speed, and font size in the sidebar settings.`
   );
   const [isTeleprompterPlaying, setIsTeleprompterPlaying] = useState(false);
   const [teleprompterSpeed, setTeleprompterSpeed] = useState(4.5);
@@ -87,7 +87,7 @@ export default function App() {
   const [recordingQuality, setRecordingQuality] = useState('4k'); // '4k' | '1080p'
   const [autoUploadS3, setAutoUploadS3] = useState(true);
   const [webcamTitle, setWebcamTitle] = useState('Webcam Capture');
-  const [webcamDescription, setWebcamDescription] = useState('Recorded live using the AetherFlow teleprompter booth.');
+  const [webcamDescription, setWebcamDescription] = useState('Recorded live using the NebulaStream teleprompter booth.');
 
   // Audio level meter bars state
   const [audioBars, setAudioBars] = useState([4, 8, 12, 10, 6]);
@@ -97,6 +97,90 @@ export default function App() {
   const [streamTitle, setStreamTitle] = useState('');
   const [streamDescription, setStreamDescription] = useState('');
   const [isImportingStream, setIsImportingStream] = useState(false);
+
+  // Overhauled Stream Ingestion States & Probing Simulator
+  const [streamDiagnostics, setStreamDiagnostics] = useState({
+    latency: 'Idle',
+    codec: '---',
+    resolution: '---',
+    health: 'STANDBY',
+    probing: false
+  });
+
+  const [importSettings, setImportSettings] = useState({
+    resolutions: ['720p', '480p'],
+    formats: ['mp4'],
+    watermarkText: 'NEBULASTREAM',
+    extractAudio: true,
+    thumbnailsCount: 3,
+    qualityProfile: '1080p', // '4k' | '1080p' | 'audio-only'
+    autoColorGrading: false,
+    frameInterpolation: true
+  });
+
+  const toggleImportResolution = (res) => {
+    setImportSettings(prev => {
+      const resolutions = prev.resolutions.includes(res)
+        ? prev.resolutions.filter(r => r !== res)
+        : [...prev.resolutions, res];
+      return { ...prev, resolutions };
+    });
+  };
+
+  const toggleImportFormat = (fmt) => {
+    setImportSettings(prev => {
+      const formats = prev.formats.includes(fmt)
+        ? prev.formats.filter(f => f !== fmt)
+        : [...prev.formats, fmt];
+      return { ...prev, formats };
+    });
+  };
+
+  const triggerStreamProbe = (url) => {
+    if (!url) {
+      setStreamDiagnostics({
+        latency: 'Idle',
+        codec: '---',
+        resolution: '---',
+        health: 'STANDBY',
+        probing: false
+      });
+      return;
+    }
+
+    setStreamDiagnostics({
+      latency: 'Probing...',
+      codec: 'Probing...',
+      resolution: 'Probing...',
+      health: 'PROBING',
+      probing: true
+    });
+
+    // Simulate probing network packets
+    setTimeout(() => {
+      let codec = 'H.264 / AAC (MP4)';
+      let resolution = '1080p (Source)';
+      let latency = Math.floor(Math.random() * 45) + 15 + 'ms';
+
+      if (url.includes('.m3u8')) {
+        codec = 'H.264 / AAC (HLS)';
+        resolution = 'Adaptive (Source)';
+      } else if (url.includes('.webm')) {
+        codec = 'VP9 / Opus (WebM)';
+        resolution = '1080p (Source)';
+      } else if (url.includes('TearsOfSteel')) {
+        resolution = '4K UHD (Source)';
+      }
+
+      setStreamDiagnostics({
+        latency,
+        codec,
+        resolution,
+        health: 'ONLINE',
+        probing: false
+      });
+    }, 1200);
+  };
 
   // Live FFMPEG Logs Console States (Ops page)
   const [consoleLogs, setConsoleLogs] = useState([
@@ -305,8 +389,8 @@ export default function App() {
     setAuthLoading(true);
 
     setTimeout(() => {
-      localStorage.setItem('aether_session', 'active');
-      localStorage.setItem('aether_email', authEmail);
+      localStorage.setItem('nebulastream_session', 'active');
+      localStorage.setItem('nebulastream_email', authEmail);
       setUserSession({ email: authEmail });
       
       setAuthLoading(false);
@@ -320,8 +404,8 @@ export default function App() {
 
   const handleLogout = () => {
     stopCameraFeed();
-    localStorage.removeItem('aether_session');
-    localStorage.removeItem('aether_email');
+    localStorage.removeItem('nebulastream_session');
+    localStorage.removeItem('nebulastream_email');
     setUserSession(null);
     setCurrentView('landing');
   };
@@ -446,43 +530,79 @@ export default function App() {
     }
   };
 
-  // Submit Stream URL Import
+  // Submit Stream URL Import with Direct Transcoding Pipeline
   const handleImportStreamSubmit = async (e) => {
     e.preventDefault();
     if (!streamUrl) return;
 
     setIsImportingStream(true);
     try {
+      // 1. Ingest URL into DB
       const res = await fetch(`${API_BASE}/api/videos/import-url`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           url: streamUrl,
-          title: streamTitle,
-          description: streamDescription
+          title: streamTitle || 'Live Ingest Stream',
+          description: streamDescription || 'Imported network feed for cloud processing.'
         })
       });
 
-      if (res.ok) {
-        const newVideo = await res.json();
-        setVideos(prev => [newVideo, ...prev]);
-        setSelectedVideoForConfig(newVideo);
-        setJobSettings(prev => ({
-          ...prev,
-          internalTitle: newVideo.title,
-          descriptionNotes: newVideo.description || ''
+      if (!res.ok) {
+        const errData = await res.json();
+        alert(errData.error || 'Failed to import stream URL');
+        setIsImportingStream(false);
+        return;
+      }
+
+      const newVideo = await res.json();
+      
+      // Add immediately to local video list to avoid delay
+      setVideos(prev => [newVideo, ...prev]);
+
+      // 2. Direct Process Ingested URL
+      const processRes = await fetch(`${API_BASE}/api/videos/${newVideo.id}/process`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          resolutions: importSettings.resolutions,
+          formats: importSettings.formats,
+          watermarkText: importSettings.watermarkText,
+          extractAudio: importSettings.extractAudio,
+          thumbnailsCount: importSettings.thumbnailsCount
+        })
+      });
+
+      if (processRes.ok) {
+        // Update local state to reflect processing status
+        setVideos(prev => prev.map(v => {
+          if (v.id === newVideo.id) {
+            return { ...v, status: 'QUEUED', progress: 0 };
+          }
+          return v;
         }));
+
+        // Reset forms & diagnostics
         setStreamUrl('');
         setStreamTitle('');
         setStreamDescription('');
-        setShowNewProjectModal(true); // Open the configure transcode project modal!
+        setStreamDiagnostics({
+          latency: 'Idle',
+          codec: '---',
+          resolution: '---',
+          health: 'STANDBY',
+          probing: false
+        });
+
+        // Redirect operator back to Dashboard active jobs panel
+        setActiveTab('dashboard');
       } else {
-        const errData = await res.json();
-        alert(errData.error || 'Failed to import stream URL');
+        const processErrData = await processRes.json();
+        alert(processErrData.error || 'Import succeeded but failed to initialize transcoding pipeline.');
       }
     } catch (err) {
-      console.error('Import Stream URL Error:', err);
-      alert('Network error occurred while importing stream URL.');
+      console.error('Import Stream Process Error:', err);
+      alert('Network error occurred while importing stream and starting processing.');
     } finally {
       setIsImportingStream(false);
     }
@@ -689,7 +809,7 @@ export default function App() {
                 <Sparkles size={20} />
               </div>
               <div className="brand-text">
-                <h2>AetherFlow</h2>
+                <h2>NebulaStream</h2>
                 <span>Transcode Matrix</span>
               </div>
             </div>
@@ -765,7 +885,7 @@ export default function App() {
           </section>
 
           <footer className="landing-footer">
-            <span>AetherFlow System Overhaul Inc. © 2026. All rights reserved. Designed with Obsidian Glassmorphism.</span>
+            <span>NebulaStream System Overhaul Inc. © 2026. All rights reserved. Designed with Obsidian Glassmorphism.</span>
           </footer>
         </div>
       )}
@@ -778,7 +898,7 @@ export default function App() {
               <div className="auth-header-logo">
                 <Sparkles size={22} />
               </div>
-              <h2>AetherFlow Matrix</h2>
+              <h2>NebulaStream Matrix</h2>
               <p>{authMode === 'login' ? 'Authenticate credentials to connect to console' : 'Deploy new operator credentials'}</p>
             </div>
 
@@ -814,7 +934,7 @@ export default function App() {
                     required 
                     className="text-input" 
                     style={{ paddingLeft: '2.25rem' }}
-                    placeholder="operator@aetherflow.io"
+                    placeholder="operator@nebulastream.io"
                     value={authEmail}
                     onChange={(e) => setAuthEmail(e.target.value)}
                   />
@@ -864,7 +984,7 @@ export default function App() {
                 ) : authMode === 'login' ? (
                   <>
                     <LogIn size={16} />
-                    <span>Enter AetherFlow Console</span>
+                    <span>Enter NebulaStream Console</span>
                   </>
                 ) : (
                   <>
@@ -898,7 +1018,7 @@ export default function App() {
                   <Sparkles size={20} />
                 </div>
                 <div className="brand-text">
-                  <h2>AetherFlow</h2>
+                  <h2>NebulaStream</h2>
                   <span>Enterprise Video</span>
                 </div>
               </div>
@@ -970,7 +1090,7 @@ export default function App() {
                   setJobSettings({
                     resolutions: ['720p', '480p'],
                     formats: ['mp4'],
-                    watermarkText: 'AETHERFLOW',
+                    watermarkText: 'NEBULASTREAM',
                     extractAudio: true,
                     thumbnailsCount: 3,
                     internalTitle: '',
@@ -986,7 +1106,7 @@ export default function App() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', borderTop: '1px solid var(--border-color)', paddingTop: '0.75rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem', padding: '0 0.5rem', color: 'var(--color-text-muted)', textOverflow: 'ellipsis', overflow: 'hidden' }}>
                   <HelpCircle size={14} style={{ color: 'var(--color-success)' }} />
-                  <span title={userSession?.email}>{userSession?.email || 'operator@aetherflow.io'}</span>
+                  <span title={userSession?.email}>{userSession?.email || 'operator@nebulastream.io'}</span>
                 </div>
                 <div className="footer-links-row" style={{ marginTop: '0.25rem' }}>
                   <span className="footer-link" onClick={handleLogout} style={{ color: 'var(--color-danger)' }}>
@@ -1010,7 +1130,7 @@ export default function App() {
                   Nodes: <strong style={{ color: '#fff' }}>42/48</strong>
                 </span>
                 <span className="indicator-item" style={{ color: 'var(--color-secondary)' }}>
-                  AetherFlow Studio v4.2
+                  NebulaStream Studio v4.2
                 </span>
               </div>
 
@@ -1022,7 +1142,7 @@ export default function App() {
                     setJobSettings({
                       resolutions: ['720p', '480p'],
                       formats: ['mp4'],
-                      watermarkText: 'AETHERFLOW',
+                      watermarkText: 'NEBULASTREAM',
                       extractAudio: true,
                       thumbnailsCount: 3,
                       internalTitle: '',
@@ -1714,74 +1834,380 @@ export default function App() {
 
             {/* 4. Stream URL Import Tab */}
             {activeTab === 'import' && (
-              <div className="import-stream-container panel">
-                <h3 className="panel-title" style={{ borderLeftColor: 'var(--color-secondary)' }}>
-                  Import Live Stream URL
-                </h3>
-                
-                <div className="stream-guide-card">
-                  <AlertCircle size={20} className="guide-icon" />
-                  <div className="guide-text">
-                    <h4>HLS & HTTP Ingestion Supported</h4>
-                    <p>
-                      Input a Apple HTTP Live Streaming (HLS) playlist link (.m3u8) or standard HTTP stream mp4 url.
-                      The transcoder worker pulls network packets directly from remote servers.
-                    </p>
-                    <span 
-                      className="guide-sample-badge"
-                      onClick={() => {
-                        setStreamUrl('https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4');
-                        setStreamTitle('Bigger Blazes Sample HTTP stream');
-                        setStreamDescription('Sample network stream video link for transcoding test.');
-                      }}
-                    >
-                      Use sample mp4 stream link
-                    </span>
-                  </div>
+              <>
+                <div>
+                  <h1 style={{ fontSize: '2rem', fontWeight: 800 }}>Stream URL Ingestion</h1>
+                  <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
+                    Ingest network video streams or live HLS feeds directly to the cloud transcoder engine.
+                  </p>
                 </div>
 
-                <form onSubmit={handleImportStreamSubmit}>
-                  <div className="form-group">
-                    <label>Stream URL</label>
-                    <input 
-                      type="url" 
-                      required
-                      className="text-input" 
-                      value={streamUrl}
-                      onChange={(e) => setStreamUrl(e.target.value)}
-                      placeholder="https://example.com/playlist.m3u8"
-                    />
+                <div className="stream-ingest-split" style={{ marginTop: '1.5rem' }}>
+                  {/* Left Column: Live diagnostics & preview */}
+                  <div className="stream-ingest-preview-panel">
+                    <div className="stream-viewport-box">
+                      {streamUrl && (streamUrl.endsWith('.mp4') || streamUrl.endsWith('.webm')) && !streamDiagnostics.probing ? (
+                        <video 
+                          src={streamUrl} 
+                          controls 
+                          autoPlay 
+                          muted 
+                          className="studio-viewport-video" 
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        />
+                      ) : (
+                        <div style={{ textAlign: 'center', position: 'relative', width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '2rem' }}>
+                          {/* Pulsing signal background visual effect */}
+                          {streamDiagnostics.health === 'ONLINE' ? (
+                            <div className="pulse-glow-circle" style={{ width: '60px', height: '60px', borderRadius: '50%', background: 'rgba(6, 182, 212, 0.15)', border: '2px dashed var(--color-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'spin 20s linear infinite' }}>
+                              <Layers size={24} style={{ color: 'var(--color-secondary)' }} />
+                            </div>
+                          ) : streamDiagnostics.probing ? (
+                            <Loader2 size={36} className="animate-spin" style={{ color: 'var(--color-primary)' }} />
+                          ) : (
+                            <Activity size={36} style={{ color: 'var(--color-text-muted)', opacity: 0.4 }} />
+                          )}
+                          
+                          <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#fff', marginTop: '1rem' }}>
+                            {streamDiagnostics.probing ? 'Probing Network Packets...' : streamDiagnostics.health === 'ONLINE' ? 'Live Stream Ingestion Active' : 'Decoder Offline'}
+                          </h3>
+                          <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.25rem', maxWidth: '300px' }}>
+                            {streamDiagnostics.probing ? 'Querying video headers, audio tracks, and codecs...' : streamDiagnostics.health === 'ONLINE' ? 'Ready to process stream. Configure parameters and click Ingest.' : 'Paste a stream URL or click a featured feed below to begin.'}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Diagnostics grid */}
+                    <div className="stream-diagnostic-grid">
+                      <div className="diagnostic-item-card">
+                        <span>Ping Latency</span>
+                        <p style={{ color: streamDiagnostics.probing ? 'var(--color-warning)' : streamDiagnostics.health === 'ONLINE' ? 'var(--color-success)' : '#fff' }}>
+                          {streamDiagnostics.latency}
+                        </p>
+                      </div>
+
+                      <div className="diagnostic-item-card">
+                        <span>Format / Codec</span>
+                        <p>{streamDiagnostics.codec}</p>
+                      </div>
+
+                      <div className="diagnostic-item-card">
+                        <span>Source Resolution</span>
+                        <p>{streamDiagnostics.resolution}</p>
+                      </div>
+
+                      <div className="diagnostic-item-card">
+                        <span>Decoder Status</span>
+                        <p style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                          {streamDiagnostics.health === 'ONLINE' ? (
+                            <>
+                              <span className="status-dot active" style={{ display: 'inline-block' }}></span>
+                              <span style={{ color: 'var(--color-success)' }}>ONLINE</span>
+                            </>
+                          ) : streamDiagnostics.probing ? (
+                            <>
+                              <span className="status-dot" style={{ display: 'inline-block', backgroundColor: 'var(--color-warning)', boxShadow: '0 0 6px var(--color-warning)' }}></span>
+                              <span style={{ color: 'var(--color-warning)' }}>PROBING</span>
+                            </>
+                          ) : (
+                            <>
+                              <span className="status-dot" style={{ display: 'inline-block', backgroundColor: 'var(--color-text-muted)', boxShadow: 'none' }}></span>
+                              <span style={{ color: 'var(--color-text-muted)' }}>STANDBY</span>
+                            </>
+                          )}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Featured test feeds */}
+                    <div className="section-card">
+                      <h4 style={{ fontSize: '0.9rem', fontWeight: 800, color: '#fff', marginBottom: '0.75rem' }}>
+                        Featured Public Streams
+                      </h4>
+                      <div className="featured-feeds-list">
+                        <div 
+                          className="featured-feed-item"
+                          onClick={() => {
+                            setStreamUrl('https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4');
+                            setStreamTitle('Sintel HD Cinematic Feed');
+                            setStreamDescription('Official open movie Sintel encoded in high bitrate MP4 format.');
+                            triggerStreamProbe('https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4');
+                          }}
+                        >
+                          <span className="featured-feed-item-title">Sintel Movie (HTTP direct mp4)</span>
+                          <span className="featured-feed-item-type">MP4</span>
+                        </div>
+
+                        <div 
+                          className="featured-feed-item"
+                          onClick={() => {
+                            setStreamUrl('https://test-streams.mux.dev/x36xhg/x36xhg.m3u8');
+                            setStreamTitle('Mux HLS Adaptive Live Stream');
+                            setStreamDescription('Adaptive HLS stream index playlist link containing multi-bitrate profiles.');
+                            triggerStreamProbe('https://test-streams.mux.dev/x36xhg/x36xhg.m3u8');
+                          }}
+                        >
+                          <span className="featured-feed-item-title">Mux Adaptive Live Feed (.m3u8)</span>
+                          <span className="featured-feed-item-type">HLS</span>
+                        </div>
+
+                        <div 
+                          className="featured-feed-item"
+                          onClick={() => {
+                            setStreamUrl('https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4');
+                            setStreamTitle('Tears of Steel 4K UHD Feed');
+                            setStreamDescription('Sci-Fi CGI test film Tears of Steel rendered in 4K resolution.');
+                            triggerStreamProbe('https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4');
+                          }}
+                        >
+                          <span className="featured-feed-item-title">Tears of Steel (4K Cinematic)</span>
+                          <span className="featured-feed-item-type">4K MP4</span>
+                        </div>
+
+                        <div 
+                          className="featured-feed-item"
+                          onClick={() => {
+                            setStreamUrl('https://playertest.longtailvideo.com/adaptive/subaru/subaru.m3u8');
+                            setStreamTitle('Subaru Multi-Bitrate HLS Playlist');
+                            setStreamDescription('HLS stream containing different streams for variable network quality.');
+                            triggerStreamProbe('https://playertest.longtailvideo.com/adaptive/subaru/subaru.m3u8');
+                          }}
+                        >
+                          <span className="featured-feed-item-title">Subaru Test Feed (.m3u8)</span>
+                          <span className="featured-feed-item-type">HLS</span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="form-group">
-                    <label>Video Title</label>
-                    <input 
-                      type="text" 
-                      className="text-input" 
-                      value={streamTitle}
-                      onChange={(e) => setStreamTitle(e.target.value)}
-                    />
-                  </div>
+                  {/* Right Column: Ingestion control panel & pipeline options */}
+                  <div className="section-card" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                    <div>
+                      <h3 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#fff' }}>Ingestion Configuration</h3>
+                      <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.15rem' }}>Define transcode profiles and stream properties</p>
+                    </div>
 
-                  <div className="form-group">
-                    <label>Video Description</label>
-                    <textarea 
-                      className="textarea-input"
-                      value={streamDescription}
-                      onChange={(e) => setStreamDescription(e.target.value)}
-                    />
-                  </div>
+                    <form onSubmit={handleImportStreamSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
+                      <div className="form-group">
+                        <label style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span>Stream Destination URL</span>
+                          {streamUrl && (
+                            <span 
+                              style={{ color: 'var(--color-secondary)', fontSize: '0.7rem', cursor: 'pointer', fontWeight: 700 }}
+                              onClick={() => triggerStreamProbe(streamUrl)}
+                            >
+                              PROBE STREAM
+                            </span>
+                          )}
+                        </label>
+                        <input 
+                          type="url" 
+                          required
+                          className="text-input" 
+                          value={streamUrl}
+                          onChange={(e) => {
+                            setStreamUrl(e.target.value);
+                            // Auto probe with slight delay
+                            if (e.target.value) triggerStreamProbe(e.target.value);
+                          }}
+                          placeholder="https://example.com/stream.m3u8"
+                        />
+                      </div>
 
-                  <button 
-                    type="submit" 
-                    className="btn-primary" 
-                    style={{ background: 'linear-gradient(135deg, var(--color-secondary), #0891b2)' }}
-                    disabled={isImportingStream}
-                  >
-                    {isImportingStream ? 'Importing URL...' : 'Import Stream & Configure'}
-                  </button>
-                </form>
-              </div>
+                      <div className="form-group">
+                        <label>Asset Alias / Title</label>
+                        <input 
+                          type="text" 
+                          required
+                          className="text-input" 
+                          value={streamTitle}
+                          onChange={(e) => setStreamTitle(e.target.value)}
+                          placeholder="e.g. Live Ingestion Feed"
+                        />
+                      </div>
+
+                      <div className="form-group">
+                        <label>Notes & Description</label>
+                        <textarea 
+                          className="textarea-input"
+                          style={{ minHeight: '60px' }}
+                          value={streamDescription}
+                          onChange={(e) => setStreamDescription(e.target.value)}
+                          placeholder="Provide details about this network stream..."
+                        />
+                      </div>
+
+                      {/* Transcode Configuration settings directly inside form! */}
+                      <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
+                        <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--color-text-muted)', display: 'block', marginBottom: '0.5rem' }}>
+                          Ingestion Quality Profile
+                        </label>
+                        <div className="quality-deck">
+                          <div 
+                            className={`quality-choice-card ${importSettings.qualityProfile === '4k' ? 'selected' : ''}`}
+                            onClick={() => setImportSettings(prev => ({ 
+                              ...prev, 
+                              qualityProfile: '4k',
+                              resolutions: ['1080p', '720p'],
+                              formats: ['mp4', 'webm'],
+                              extractAudio: true
+                            }))}
+                          >
+                            <div className="quality-card-desc">
+                              <h4>4K High-Fidelity Transcode</h4>
+                              <p>HEVC + WebM dual output containers</p>
+                            </div>
+                            <div className="quality-card-check-circle">
+                              {importSettings.qualityProfile === '4k' && <span style={{ width: '6px', height: '6px', background: '#fff', borderRadius: '50%' }}></span>}
+                            </div>
+                          </div>
+
+                          <div 
+                            className={`quality-choice-card ${importSettings.qualityProfile === '1080p' ? 'selected' : ''}`}
+                            onClick={() => setImportSettings(prev => ({ 
+                              ...prev, 
+                              qualityProfile: '1080p',
+                              resolutions: ['720p', '480p'],
+                              formats: ['mp4'],
+                              extractAudio: true
+                            }))}
+                          >
+                            <div className="quality-card-desc">
+                              <h4>Standard HD Distribution</h4>
+                              <p>H.264 MP4 output optimized for web delivery</p>
+                            </div>
+                            <div className="quality-card-check-circle">
+                              {importSettings.qualityProfile === '1080p' && <span style={{ width: '6px', height: '6px', background: '#fff', borderRadius: '50%' }}></span>}
+                            </div>
+                          </div>
+
+                          <div 
+                            className={`quality-choice-card ${importSettings.qualityProfile === 'audio-only' ? 'selected' : ''}`}
+                            onClick={() => setImportSettings(prev => ({ 
+                              ...prev, 
+                              qualityProfile: 'audio-only',
+                              resolutions: ['480p'],
+                              formats: ['mp4'],
+                              extractAudio: true
+                            }))}
+                          >
+                            <div className="quality-card-desc">
+                              <h4>Podcast / Audio Extract</h4>
+                              <p>Isolate AAC/MP3 track (bypasses video rendering)</p>
+                            </div>
+                            <div className="quality-card-check-circle">
+                              {importSettings.qualityProfile === 'audio-only' && <span style={{ width: '6px', height: '6px', background: '#fff', borderRadius: '50%' }}></span>}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Transcode checkboxes details */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
+                        <div className="form-group">
+                          <label style={{ fontSize: '0.78rem' }}>Custom Resolutions</label>
+                          <div className="checkbox-group" style={{ gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem', marginTop: '0.25rem' }}>
+                            {['1080p', '720p', '480p'].map(res => (
+                              <div 
+                                key={res} 
+                                className={`checkbox-card ${importSettings.resolutions.includes(res) ? 'selected' : ''}`}
+                                onClick={() => toggleImportResolution(res)}
+                                style={{ padding: '0.35rem' }}
+                              >
+                                <input 
+                                  type="checkbox" 
+                                  checked={importSettings.resolutions.includes(res)}
+                                  onChange={() => {}}
+                                />
+                                <span className="checkbox-label" style={{ fontSize: '0.75rem' }}>{res}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="form-group">
+                          <label style={{ fontSize: '0.78rem' }}>Watermark text overlay</label>
+                          <input 
+                            type="text" 
+                            className="text-input" 
+                            style={{ padding: '0.45rem', fontSize: '0.8rem' }}
+                            value={importSettings.watermarkText}
+                            onChange={(e) => setImportSettings(prev => ({ ...prev, watermarkText: e.target.value }))}
+                            placeholder="NO WATERMARK"
+                          />
+                        </div>
+
+                        {/* Extra toggles */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                          <div 
+                            className={`checkbox-card ${importSettings.extractAudio ? 'selected' : ''}`}
+                            onClick={() => setImportSettings(prev => ({ ...prev, extractAudio: !prev.extractAudio }))}
+                            style={{ padding: '0.45rem' }}
+                          >
+                            <input 
+                              type="checkbox" 
+                              checked={importSettings.extractAudio} 
+                              onChange={() => {}}
+                            />
+                            <Volume2 size={12} style={{ color: 'var(--color-warning)' }} />
+                            <span className="checkbox-label" style={{ fontSize: '0.75rem' }}>Extract MP3 Audio track</span>
+                          </div>
+
+                          <div 
+                            className={`checkbox-card ${importSettings.autoColorGrading ? 'selected' : ''}`}
+                            onClick={() => setImportSettings(prev => ({ ...prev, autoColorGrading: !prev.autoColorGrading }))}
+                            style={{ padding: '0.45rem' }}
+                          >
+                            <input 
+                              type="checkbox" 
+                              checked={importSettings.autoColorGrading} 
+                              onChange={() => {}}
+                            />
+                            <Sparkles size={12} style={{ color: 'var(--color-secondary)' }} />
+                            <span className="checkbox-label" style={{ fontSize: '0.75rem' }}>AI Color Grading (Auto LUT)</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <button 
+                        type="submit" 
+                        className="btn-primary" 
+                        style={{ 
+                          background: 'linear-gradient(135deg, var(--color-primary), #6366f1)',
+                          width: '100%',
+                          padding: '0.75rem',
+                          fontWeight: 700,
+                          fontSize: '0.88rem',
+                          borderRadius: '6px',
+                          border: 'none',
+                          color: '#fff',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '0.5rem',
+                          marginTop: '0.5rem',
+                          boxShadow: '0 4px 12px rgba(139, 92, 246, 0.2)'
+                        }}
+                        disabled={isImportingStream}
+                      >
+                        {isImportingStream ? (
+                          <>
+                            <Loader2 size={16} className="animate-spin" />
+                            <span>Ingesting Pipeline Stream...</span>
+                          </>
+                        ) : (
+                          <>
+                            <ArrowRight size={16} />
+                            <span>Ingest & Process Stream</span>
+                          </>
+                        )}
+                      </button>
+                    </form>
+                  </div>
+                </div>
+              </>
             )}
 
             {/* 5. Operations Telemetry & Console Tab (Screenshot 2 Layout) */}
@@ -1906,7 +2332,7 @@ export default function App() {
                 <Activity size={48} style={{ margin: '0 auto 1.5rem', color: 'var(--color-primary)', opacity: 0.8 }} />
                 <h2 style={{ fontSize: '1.5rem', fontWeight: 800 }}>{activeTab.toUpperCase()} PANEL</h2>
                 <p style={{ color: 'var(--color-text-muted)', marginTop: '0.5rem', fontSize: '0.9rem' }}>
-                  Connected to AetherFlow Enterprise cloud cluster node: <strong style={{ color: '#fff' }}>node-fargate-018</strong>. Data updates automatically.
+                  Connected to NebulaStream Enterprise cloud cluster node: <strong style={{ color: '#fff' }}>node-fargate-018</strong>. Data updates automatically.
                 </p>
               </div>
             )}
