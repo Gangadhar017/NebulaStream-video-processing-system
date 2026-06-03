@@ -30,6 +30,7 @@ model Video {
   size         Float
   duration     Float?
   originalPath String
+  streamUrl    String?
   status       JobStatus        @default(UPLOADED)
   progress     Int              @default(0)
   error        String?

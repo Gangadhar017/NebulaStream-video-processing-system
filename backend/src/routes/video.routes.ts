@@ -73,6 +73,64 @@ router.post('/upload', upload.single('video'), async (req: Request, res: Respons
   }
 });
 
+// Import Video from public Stream URL
+router.post('/import-url', async (req: Request, res: Response) => {
+  try {
+    const { url, title, description } = req.body;
+
+    if (!url) {
+      return res.status(400).json({ error: 'Stream URL is required' });
+    }
+
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      return res.status(400).json({ error: 'Invalid URL protocol. URL must start with http:// or https://' });
+    }
+
+    // Determine mimeType fallback
+    let mimeType = 'video/mp4';
+    if (url.includes('.m3u8')) {
+      mimeType = 'application/x-mpegURL';
+    } else if (url.includes('.webm')) {
+      mimeType = 'video/webm';
+    } else if (url.includes('.mkv')) {
+      mimeType = 'video/x-matroska';
+    }
+
+    // Fallback title from URL filename
+    let fallbackTitle = 'Imported Live Stream';
+    try {
+      const urlObj = new URL(url);
+      const pathname = urlObj.pathname;
+      const basename = path.basename(pathname);
+      if (basename && basename.includes('.')) {
+        fallbackTitle = basename;
+      }
+    } catch (e) {
+      // ignore
+    }
+
+    // Save metadata to database
+    const video = await prisma.video.create({
+      data: {
+        title: title || fallbackTitle,
+        description: description || '',
+        originalName: 'Network Stream',
+        mimeType,
+        size: 0, // Indeterminate size for stream
+        originalPath: url,
+        streamUrl: url,
+        status: 'UPLOADED',
+        progress: 0
+      }
+    });
+
+    return res.status(201).json(video);
+  } catch (error: any) {
+    console.error('Import Stream URL Error:', error);
+    return res.status(500).json({ error: 'Failed to import stream URL: ' + error.message });
+  }
+});
+
 // Get All Videos
 router.get('/', async (req: Request, res: Response) => {
   try {

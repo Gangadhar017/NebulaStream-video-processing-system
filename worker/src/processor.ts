@@ -181,21 +181,32 @@ export const processVideoJob = async (jobId: string, data: JobData, updateJobPro
       data: { status: 'PROCESSING', progress: 0 }
     });
 
-    // 2. Fetch input file
-    if (process.env.STORAGE_TYPE === 's3') {
-      localInputPath = path.join(jobDir, 'original_input');
-      await downloadFromS3(originalPath, localInputPath);
-    } else {
-      localInputPath = path.resolve(path.join(uploadDir, originalPath));
-    }
+    const isStreamUrl = originalPath.startsWith('http://') || originalPath.startsWith('https://');
 
-    if (!fs.existsSync(localInputPath)) {
-      throw new Error(`Original video file not found at local path: ${localInputPath}`);
+    if (isStreamUrl) {
+      localInputPath = originalPath;
+    } else {
+      // 2. Fetch input file
+      if (process.env.STORAGE_TYPE === 's3') {
+        localInputPath = path.join(jobDir, 'original_input');
+        await downloadFromS3(originalPath, localInputPath);
+      } else {
+        localInputPath = path.resolve(path.join(uploadDir, originalPath));
+      }
+
+      if (!fs.existsSync(localInputPath)) {
+        throw new Error(`Original video file not found at local path: ${localInputPath}`);
+      }
     }
 
     // 3. Probe original video duration & metadata
-    const metadata: any = await ffprobePromise(localInputPath);
-    const duration = metadata.format.duration || 0;
+    let duration = 0;
+    try {
+      const metadata: any = await ffprobePromise(localInputPath);
+      duration = Number(metadata?.format?.duration) || 0;
+    } catch (probeError) {
+      console.warn(`Warning: failed to probe video duration/metadata for ${localInputPath}:`, probeError);
+    }
     
     // Save duration back to database
     await prisma.video.update({
@@ -287,25 +298,33 @@ export const processVideoJob = async (jobId: string, data: JobData, updateJobPro
 
     // 7. Run Thumbnails Generation
     if (options.thumbnailsCount > 0) {
-      const thumbnailPaths = await generateThumbnails(
-        localInputPath,
-        jobDir,
-        duration,
-        options.thumbnailsCount,
-        async (percent) => {
-          await reportGlobalProgress(percent);
-        }
-      );
+      if (duration > 0) {
+        try {
+          const thumbnailPaths = await generateThumbnails(
+            localInputPath,
+            jobDir,
+            duration,
+            options.thumbnailsCount,
+            async (percent) => {
+              await reportGlobalProgress(percent);
+            }
+          );
 
-      thumbnailPaths.forEach((tPath, index) => {
-        processedAssetsList.push({
-          assetType: 'THUMBNAIL',
-          resolution: 'original',
-          format: 'png',
-          localPath: tPath,
-          mime: 'image/png'
-        });
-      });
+          thumbnailPaths.forEach((tPath, index) => {
+            processedAssetsList.push({
+              assetType: 'THUMBNAIL',
+              resolution: 'original',
+              format: 'png',
+              localPath: tPath,
+              mime: 'image/png'
+            });
+          });
+        } catch (thumbError) {
+          console.warn('Warning: failed to generate thumbnails:', thumbError);
+        }
+      } else {
+        console.warn('Skipping thumbnail generation: video duration is 0 or indeterminate (likely a stream URL)');
+      }
 
       completedSteps++;
       await reportGlobalProgress(0);
