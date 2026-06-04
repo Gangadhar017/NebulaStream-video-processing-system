@@ -3596,54 +3596,53 @@ export default function App() {
               </div>
             </div>
           )}
+        </div>
+      )}
 
-          {/* INFO DETAILS MODAL */}
-          {activeInfoModal && (
-            <div className="modal-overlay" onClick={() => setActiveInfoModal(null)}>
-              <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '480px', padding: '2rem', textAlign: 'center', animation: 'slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)' }}>
-                <div className="modal-header" style={{ justifyContent: 'center', border: 'none', padding: 0 }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
-                    <div style={{
-                      width: '64px',
-                      height: '64px',
-                      borderRadius: '50%',
-                      background: 'rgba(139, 92, 246, 0.1)',
-                      border: '1px solid rgba(139, 92, 246, 0.2)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: 'var(--color-primary)',
-                      boxShadow: 'var(--shadow-neon)'
-                    }}>
-                      {activeInfoModal === 'core' && <Activity size={32} />}
-                      {activeInfoModal === 'features' && <Sparkles size={32} />}
-                      {activeInfoModal === 'infra' && <Database size={32} />}
-                    </div>
-                    <h3 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#fff' }}>
-                      {activeInfoModal === 'core' && 'NebulaStream Core Engine'}
-                      {activeInfoModal === 'features' && 'High-Performance Features'}
-                      {activeInfoModal === 'infra' && 'Enterprise Infrastructure'}
-                    </h3>
-                  </div>
+      {/* INFO DETAILS MODAL */}
+      {activeInfoModal && (
+        <div className="modal-overlay" onClick={() => setActiveInfoModal(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '480px', padding: '2rem', textAlign: 'center', animation: 'slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)' }}>
+            <div className="modal-header" style={{ justifyContent: 'center', border: 'none', padding: 0 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
+                <div style={{
+                  width: '64px',
+                  height: '64px',
+                  borderRadius: '50%',
+                  background: 'rgba(139, 92, 246, 0.1)',
+                  border: '1px solid rgba(139, 92, 246, 0.2)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: 'var(--color-primary)',
+                  boxShadow: 'var(--shadow-neon)'
+                }}>
+                  {activeInfoModal === 'core' && <Activity size={32} />}
+                  {activeInfoModal === 'features' && <Sparkles size={32} />}
+                  {activeInfoModal === 'infra' && <Database size={32} />}
                 </div>
-                <div className="modal-body" style={{ marginTop: '1rem', color: 'var(--color-text-muted)', fontSize: '0.92rem', lineHeight: '1.5', padding: 0 }}>
-                  <p>
-                    {activeInfoModal === 'core' && 'Scale video transcoding parallel clusters on demand. Experience lightning fast processing powered by automated node scaling, high-throughput pipeline queuing, and intelligent CPU/RAM scheduling across Fargate containers.'}
-                    {activeInfoModal === 'features' && 'Ingest, transcode, isolate audio tracks, and burn-in custom watermark overlays. NebulaStream offers professional watermark branding, real-time chunked stream uploads, custom output resolution selection (4K down to 480p), and automated video thumbnail extraction.'}
-                    {activeInfoModal === 'infra' && 'Connected via AWS Fargate ECS containers, secure encrypted S3 buckets, and high-availability ElastiCache Redis queues. Orchestrates cluster operations with zero downtime, robust storage isolation, and fail-safe video stream caching.'}
-                  </p>
-                  <button 
-                    className="btn-action-primary" 
-                    style={{ marginTop: '2rem', width: '100%', padding: '0.75rem' }}
-                    onClick={() => setActiveInfoModal(null)}
-                  >
-                    Awesome
-                  </button>
-                </div>
+                <h3 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#fff' }}>
+                  {activeInfoModal === 'core' && 'NebulaStream Core Engine'}
+                  {activeInfoModal === 'features' && 'High-Performance Features'}
+                  {activeInfoModal === 'infra' && 'Enterprise Infrastructure'}
+                </h3>
               </div>
             </div>
-          )}
-
+            <div className="modal-body" style={{ marginTop: '1rem', color: 'var(--color-text-muted)', fontSize: '0.92rem', lineHeight: '1.5', padding: 0 }}>
+              <p>
+                {activeInfoModal === 'core' && 'Scale video transcoding parallel clusters on demand. Experience lightning fast processing powered by automated node scaling, high-throughput pipeline queuing, and intelligent CPU/RAM scheduling across Fargate containers.'}
+                {activeInfoModal === 'features' && 'Ingest, transcode, isolate audio tracks, and burn-in custom watermark overlays. NebulaStream offers professional watermark branding, real-time chunked stream uploads, custom output resolution selection (4K down to 480p), and automated video thumbnail extraction.'}
+                {activeInfoModal === 'infra' && 'Connected via AWS Fargate ECS containers, secure encrypted S3 buckets, and high-availability ElastiCache Redis queues. Orchestrates cluster operations with zero downtime, robust storage isolation, and fail-safe video stream caching.'}
+              </p>
+              <button 
+                className="btn-action-primary" 
+                style={{ marginTop: '2rem', width: '100%', padding: '0.75rem' }}
+                onClick={() => setActiveInfoModal(null)}
+              >
+                Awesome
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </>
