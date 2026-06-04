@@ -560,6 +560,13 @@ export default function App() {
     }
   }, [selectedVideoDevice, selectedAudioDevice]);
 
+  // Bind camera stream to the video DOM element once it renders
+  useEffect(() => {
+    if (webcamVideoRef.current) {
+      webcamVideoRef.current.srcObject = cameraStream;
+    }
+  }, [cameraStream]);
+
   // Recording timer increment
   useEffect(() => {
     let interval = null;
@@ -744,9 +751,6 @@ export default function App() {
       };
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       setCameraStream(stream);
-      if (webcamVideoRef.current) {
-        webcamVideoRef.current.srcObject = stream;
-      }
     } catch (err) {
       console.error('Failed to start camera feed:', err);
       alert('Could not access camera/mic stream: ' + err.message);
