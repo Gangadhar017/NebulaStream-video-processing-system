@@ -9,8 +9,9 @@ import VideoPlayerModal from './components/VideoPlayerModal';
 
 const getApiBase = () => {
   let url = import.meta.env.VITE_API_URL || '';
-  if (url.includes(' ')) {
-    url = url.trim().split(/\s+/)[0];
+  url = url.trim();
+  if (url) {
+    url = url.split(/\s+/)[0];
   }
   if (url.endsWith('/')) {
     url = url.slice(0, -1);
