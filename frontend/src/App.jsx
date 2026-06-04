@@ -7,7 +7,18 @@ import {
 } from 'lucide-react';
 import VideoPlayerModal from './components/VideoPlayerModal';
 
-const API_BASE = import.meta.env.VITE_API_URL || '';
+const getApiBase = () => {
+  let url = import.meta.env.VITE_API_URL || '';
+  if (url.includes(' ')) {
+    url = url.trim().split(/\s+/)[0];
+  }
+  if (url.endsWith('/')) {
+    url = url.slice(0, -1);
+  }
+  return url;
+};
+
+const API_BASE = getApiBase();
 
 export default function App() {
   // Authentication & Navigation Root States
