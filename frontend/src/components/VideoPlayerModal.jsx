@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { X, Download, BarChart2, Image, Film, Music } from 'lucide-react';
+import { API_BASE } from '../App';
 
 export default function VideoPlayerModal({ video, onClose }) {
   const videoRef = useRef(null);
@@ -11,7 +12,6 @@ export default function VideoPlayerModal({ video, onClose }) {
   
   // Set up resolution choices
   // Include original video as a choice
-  const API_BASE = import.meta.env.VITE_API_URL || '';
   const originalUrl = video.originalPath.startsWith('http') 
     ? video.originalPath 
     : `${API_BASE}/uploads/${video.originalPath}`;

@@ -18,7 +18,7 @@ const getApiBase = () => {
   return url;
 };
 
-const API_BASE = getApiBase();
+export const API_BASE = getApiBase();
 
 export default function App() {
   // Authentication & Navigation Root States
