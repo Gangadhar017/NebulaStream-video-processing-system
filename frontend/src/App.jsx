@@ -1216,7 +1216,7 @@ export default function App() {
           </section>
 
           <footer className="landing-footer">
-            <span>NebulaStream System Overhaul Inc. © 2026. All rights reserved. Designed with Obsidian Glassmorphism.</span>
+            <span>NebulaStream System Overhaul Inc. © 2026. All rights reserved.</span>
           </footer>
         </div>
       )}
