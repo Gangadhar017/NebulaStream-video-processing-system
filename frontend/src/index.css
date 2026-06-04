@@ -1246,7 +1246,7 @@ input:checked + .toggle-slider:before {
 
 @media (min-width: 992px) {
   .studio-tab-layout {
-    grid-template-columns: 1.4fr 1fr;
+    grid-template-columns: 1.8fr 1fr;
   }
 }
 
@@ -1254,7 +1254,7 @@ input:checked + .toggle-slider:before {
   background: #020308;
   border-radius: 12px;
   border: 1px solid var(--border-color);
-  aspect-ratio: 16/10;
+  aspect-ratio: 16/9;
   position: relative;
   overflow: hidden;
   box-shadow: var(--shadow-md);
