@@ -20,6 +20,41 @@ const getApiBase = () => {
 
 export const API_BASE = getApiBase();
 
+const NebulaLogo = ({ size = 24 }) => (
+  <svg 
+    width={size} 
+    height={size} 
+    viewBox="0 0 32 32" 
+    fill="none" 
+    xmlns="http://www.w3.org/2000/svg"
+    style={{ display: 'block' }}
+  >
+    <defs>
+      <linearGradient id="nebula-grad-logo" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stopColor="#8b5cf6" />
+        <stop offset="50%" stopColor="#ec4899" />
+        <stop offset="100%" stopColor="#06b6d4" />
+      </linearGradient>
+    </defs>
+    <path 
+      d="M26 16C26 21.5228 21.5228 26 16 26C13.2386 26 10.7386 24.8807 8.92893 23.0711" 
+      stroke="url(#nebula-grad-logo)" 
+      strokeWidth="2.5" 
+      strokeLinecap="round" 
+    />
+    <path 
+      d="M6 16C6 10.4772 10.4772 6 16 6C18.7614 6 21.2614 7.11929 23.0711 8.92893" 
+      stroke="url(#nebula-grad-logo)" 
+      strokeWidth="2.5" 
+      strokeLinecap="round" 
+    />
+    <path 
+      d="M13 11.2302C13 10.4357 13.8821 9.95754 14.5479 10.3923L20.3168 14.1621C20.9256 14.5598 20.9256 15.4402 20.3168 15.8379L14.5479 19.6077C13.8821 20.0425 13 19.5643 13 18.7698V11.2302Z" 
+      fill="url(#nebula-grad-logo)" 
+    />
+  </svg>
+);
+
 export default function App() {
   // Authentication & Navigation Root States
   const [currentView, setCurrentView] = useState(() => {
@@ -1095,7 +1130,7 @@ export default function App() {
           <header className="landing-header">
             <div className="sidebar-brand" style={{ margin: 0, padding: 0 }}>
               <div className="brand-logo">
-                <Sparkles size={20} />
+                <NebulaLogo size={24} />
               </div>
               <div className="brand-text">
                 <h2>NebulaStream</h2>
@@ -1192,7 +1227,7 @@ export default function App() {
           <div className="auth-glass-card">
             <div className="auth-header-area">
               <div className="auth-header-logo">
-                <Sparkles size={22} />
+                <NebulaLogo size={28} />
               </div>
               <h2>NebulaStream Matrix</h2>
               <p>{authMode === 'login' ? 'Authenticate credentials to connect to console' : 'Deploy new operator credentials'}</p>
@@ -1436,7 +1471,7 @@ export default function App() {
             <div>
               <div className="sidebar-brand">
                 <div className="brand-logo">
-                  <Sparkles size={20} />
+                  <NebulaLogo size={24} />
                 </div>
                 <div className="brand-text">
                   <h2>NebulaStream</h2>

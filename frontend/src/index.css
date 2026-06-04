@@ -95,12 +95,12 @@ body {
 .brand-logo {
   width: 38px;
   height: 38px;
-  background: linear-gradient(135deg, var(--color-primary), #6366f1);
-  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
   box-shadow: var(--shadow-neon);
 }
 
@@ -1162,12 +1162,12 @@ input:checked + .toggle-slider:before {
 .auth-header-logo {
   width: 44px;
   height: 44px;
-  background: linear-gradient(135deg, var(--color-primary), #6366f1);
-  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
   margin: 0 auto 0.75rem;
   box-shadow: var(--shadow-neon);
 }
