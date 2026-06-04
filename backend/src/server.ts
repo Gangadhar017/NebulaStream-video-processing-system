@@ -3,6 +3,7 @@ import cors from 'cors';
 import path from 'path';
 import dotenv from 'dotenv';
 import videoRoutes from './routes/video.routes';
+import examRoutes from './routes/exam.routes';
 
 // Load environment variables
 dotenv.config();
@@ -32,6 +33,7 @@ app.use((req, res, next) => {
 
 // API Routes
 app.use('/api/videos', videoRoutes);
+app.use('/api/exams', examRoutes);
 
 // Health Check
 app.get('/health', (req: Request, res: Response) => {

@@ -30,6 +30,20 @@ export default function App() {
   // Main Dashboard active tab
   const [activeTab, setActiveTab] = useState('dashboard');
   
+  // Online Exam Proctoring States
+  const [examSessions, setExamSessions] = useState([]);
+  const [selectedExamSession, setSelectedExamSession] = useState(null);
+  const [loadingExams, setLoadingExams] = useState(false);
+  const [examStudentId, setExamStudentId] = useState('STUDENT-8841');
+  const [examSubjectId, setExamSubjectId] = useState('EXAM-MATH-101');
+  const [activeExamRecordingId, setActiveExamRecordingId] = useState(null);
+  const [examTimer, setExamTimer] = useState(0);
+  const [currentExamQuestionIndex, setCurrentExamQuestionIndex] = useState(0);
+  const [selectedAnswers, setSelectedAnswers] = useState({});
+  const [examFlagsLogged, setExamFlagsLogged] = useState([]);
+  const [examMediaRecorder, setExamMediaRecorder] = useState(null);
+  const [examCameraStream, setExamCameraStream] = useState(null);
+
   // New Project Ingestion Modal State
   const [showNewProjectModal, setShowNewProjectModal] = useState(false);
 
@@ -254,6 +268,196 @@ export default function App() {
   const fileInputRef = useRef(null);
   const modalFileInputRef = useRef(null);
   const webcamVideoRef = useRef(null);
+  
+  // Proctoring specific refs
+  const elapsedRef = useRef(0);
+  const examTimerIntervalRef = useRef(null);
+  const examProctorVideoRef = useRef(null);
+  const examStudentVideoPreviewRef = useRef(null);
+
+  const examQuestions = [
+    {
+      id: 1,
+      question: "Which of the following sorting algorithms has a worst-case time complexity of O(n log n)?",
+      options: ["Bubble Sort", "Merge Sort", "Quick Sort", "Insertion Sort"],
+      answer: "Merge Sort"
+    },
+    {
+      id: 2,
+      question: "In standard database design, which Normal Form addresses removing transitive functional dependencies?",
+      options: ["1NF", "2NF", "3NF", "BCNF"],
+      answer: "3NF"
+    },
+    {
+      id: 3,
+      question: "Which AWS storage class is optimized for archival data that is rarely accessed, but requires millisecond retrieval?",
+      options: ["S3 Standard", "S3 Glacier Instant Retrieval", "S3 Glacier Flexible Retrieval", "S3 Intelligent-Tiering"],
+      answer: "S3 Glacier Instant Retrieval"
+    }
+  ];
+
+  // Fetch exam sessions
+  const fetchExamSessions = async () => {
+    setLoadingExams(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/exams`);
+      if (res.ok) {
+        const data = await res.json();
+        setExamSessions(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch exam sessions:', err);
+    } finally {
+      setLoadingExams(false);
+    }
+  };
+
+  const startMockExamDemo = async () => {
+    try {
+      // 1. Initialize recording session in DB
+      const res = await fetch(`${API_BASE}/api/exams/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          studentId: examStudentId,
+          examId: examSubjectId
+        })
+      });
+
+      if (!res.ok) {
+        throw new Error('Failed to initialize exam session on server');
+      }
+
+      const recording = await res.json();
+      setActiveExamRecordingId(recording.id);
+      setExamFlagsLogged([]);
+      setSelectedAnswers({});
+      setCurrentExamQuestionIndex(0);
+      elapsedRef.current = 0;
+
+      // 2. Obtain webcam video/audio stream
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      setExamCameraStream(stream);
+
+      // Set stream to student preview ref with a small delay to allow render
+      setTimeout(() => {
+        if (examStudentVideoPreviewRef.current) {
+          examStudentVideoPreviewRef.current.srcObject = stream;
+        }
+      }, 300);
+
+      // 3. Start MediaRecorder
+      const recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+      recorder.ondataavailable = async (e) => {
+        if (e.data && e.data.size > 0) {
+          const formData = new FormData();
+          formData.append('chunk', e.data);
+          try {
+            await fetch(`${API_BASE}/api/exams/${recording.id}/upload-chunk`, {
+              method: 'POST',
+              body: formData
+            });
+          } catch (err) {
+            console.error('Failed to upload video chunk:', err);
+          }
+        }
+      };
+
+      recorder.start(5000); // chunk every 5 seconds for fast demo
+      setExamMediaRecorder(recorder);
+
+      // 4. Setup proctor listeners and timers
+      setExamTimer(300); // 5 min countdown
+      examTimerIntervalRef.current = setInterval(() => {
+        setExamTimer(prev => {
+          if (prev <= 1) {
+            clearInterval(examTimerIntervalRef.current);
+            handleSubmitExam();
+            return 0;
+          }
+          elapsedRef.current += 1;
+          return prev - 1;
+        });
+      }, 1000);
+
+      // Cheating event logs
+      window.onblur = () => {
+        logProctorFlag('TAB_SWITCH', 'HIGH', 'Student switched browser tab / window focus');
+      };
+      window.onfocus = () => {
+        logProctorFlag('TAB_FOCUS', 'LOW', 'Student returned to exam page');
+      };
+
+      // Set view to exam mode
+      setCurrentView('exam');
+
+    } catch (err) {
+      alert('Camera/Microphone access is required to take the proctored exam. Error: ' + err.message);
+    }
+  };
+
+  const logProctorFlag = async (eventType, severity, details) => {
+    setActiveExamRecordingId(currId => {
+      if (currId) {
+        fetch(`${API_BASE}/api/exams/${currId}/flag`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            timestamp: elapsedRef.current,
+            eventType,
+            severity,
+            details
+          })
+        }).then(res => {
+          if (res.ok) {
+            res.json().then(flag => {
+              setExamFlagsLogged(prev => [...prev, flag]);
+            });
+          }
+        }).catch(err => console.error('Failed to log flag:', err));
+      }
+      return currId;
+    });
+  };
+
+  const handleSubmitExam = async () => {
+    // Reset proctor events
+    window.onblur = null;
+    window.onfocus = null;
+
+    if (examTimerIntervalRef.current) {
+      clearInterval(examTimerIntervalRef.current);
+    }
+
+    // Stop recorder
+    if (examMediaRecorder && examMediaRecorder.state !== 'inactive') {
+      examMediaRecorder.stop();
+    }
+
+    // Stop camera stream
+    if (examCameraStream) {
+      examCameraStream.getTracks().forEach(track => track.stop());
+    }
+
+    setActiveExamRecordingId(currId => {
+      if (currId) {
+        fetch(`${API_BASE}/api/exams/${currId}/complete`, {
+          method: 'POST'
+        }).then(res => {
+          if (res.ok) {
+            alert('Exam submitted successfully! The video is being processed in the background worker queue.');
+            fetchExamSessions(); // refresh list
+          }
+        }).catch(err => console.error('Failed to complete exam:', err));
+      }
+      return null;
+    });
+
+    setExamCameraStream(null);
+    setExamMediaRecorder(null);
+    setCurrentView('console');
+    setActiveTab('proctoring');
+  };
 
   // Fetch all videos
   const fetchVideos = async () => {
@@ -275,6 +479,12 @@ export default function App() {
       fetchVideos();
     }
   }, [currentView]);
+
+  useEffect(() => {
+    if (currentView === 'console' && activeTab === 'proctoring') {
+      fetchExamSessions();
+    }
+  }, [currentView, activeTab]);
 
   // Live SSE connection for progress updates
   useEffect(() => {
@@ -911,6 +1121,13 @@ export default function App() {
               >
                 Sign In to Console
               </button>
+              <button 
+                className="btn-landing-cta-secondary"
+                style={{ border: '1px solid var(--color-secondary)', color: 'var(--color-secondary)' }}
+                onClick={startMockExamDemo}
+              >
+                Launch Exam Demo
+              </button>
             </div>
           </main>
 
@@ -1070,6 +1287,131 @@ export default function App() {
         </div>
       )}
 
+      {/* VIEW 4: ONLINE EXAM PROCTORING SANDBOX */}
+      {currentView === 'exam' && (
+        <div className="exam-portal-wrapper">
+          <header className="exam-portal-header">
+            <div className="sidebar-brand" style={{ margin: 0, padding: 0 }}>
+              <div className="brand-logo" style={{ background: 'linear-gradient(135deg, var(--color-secondary), #0891b2)' }}><ShieldCheck size={20} /></div>
+              <div className="brand-text">
+                <h2>NebulaStream</h2>
+                <span>Proctoring Sandbox</span>
+              </div>
+            </div>
+            <div className="exam-meta-indicators">
+              <span className="exam-meta-badge">STUDENT: {examStudentId}</span>
+              <span className="exam-meta-badge">EXAM: {examSubjectId}</span>
+              <span className="exam-timer-badge">TIME LEFT: {formatTimer(examTimer)}</span>
+            </div>
+          </header>
+
+          <div className="exam-portal-layout">
+            <div className="exam-main-content">
+              <div className="section-card exam-question-card">
+                <span className="question-number" style={{ color: 'var(--color-primary)', fontWeight: 700, fontSize: '0.8rem' }}>
+                  QUESTION {currentExamQuestionIndex + 1} OF {examQuestions.length}
+                </span>
+                <h2 style={{ marginTop: '0.75rem', fontSize: '1.3rem', color: '#fff', fontWeight: 800 }}>
+                  {examQuestions[currentExamQuestionIndex].question}
+                </h2>
+                
+                <div className="exam-options-list" style={{ marginTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  {examQuestions[currentExamQuestionIndex].options.map((option, idx) => {
+                    const isSelected = selectedAnswers[currentExamQuestionIndex] === option;
+                    return (
+                      <div 
+                        key={idx}
+                        className={`exam-option-item ${isSelected ? 'selected' : ''}`}
+                        onClick={() => setSelectedAnswers(prev => ({ ...prev, [currentExamQuestionIndex]: option }))}
+                        style={{
+                          padding: '1rem',
+                          background: isSelected ? 'rgba(139, 92, 246, 0.08)' : 'rgba(255,255,255,0.01)',
+                          border: isSelected ? '1px solid var(--color-primary)' : '1px solid var(--border-color)',
+                          borderRadius: '8px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.75rem',
+                          transition: 'var(--transition)'
+                        }}
+                      >
+                        <div style={{
+                          width: '18px',
+                          height: '18px',
+                          borderRadius: '50%',
+                          border: '2px solid',
+                          borderColor: isSelected ? 'var(--color-primary)' : 'var(--color-text-muted)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0
+                        }}>
+                          {isSelected && <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--color-primary)' }}></div>}
+                        </div>
+                        <span style={{ color: isSelected ? '#fff' : 'var(--color-text-muted)', fontSize: '0.9rem' }}>{option}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="exam-nav-buttons" style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2rem', borderTop: '1px solid var(--border-color)', paddingTop: '1.25rem' }}>
+                  <button 
+                    className="btn-action-secondary"
+                    disabled={currentExamQuestionIndex === 0}
+                    onClick={() => setCurrentExamQuestionIndex(prev => prev - 1)}
+                  >
+                    Previous
+                  </button>
+
+                  {currentExamQuestionIndex < examQuestions.length - 1 ? (
+                    <button 
+                      className="btn-action-primary"
+                      onClick={() => setCurrentExamQuestionIndex(prev => prev + 1)}
+                    >
+                      Next Question
+                    </button>
+                  ) : (
+                    <button 
+                      className="btn-action-primary"
+                      style={{ background: 'linear-gradient(135deg, var(--color-success), #059669)' }}
+                      onClick={handleSubmitExam}
+                    >
+                      Submit Exam
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Right sidebar: Proctor camera and logger feed */}
+            <aside className="exam-proctor-sidebar">
+              <div className="exam-camera-viewport">
+                <video ref={examStudentVideoPreviewRef} autoPlay muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                <div className="camera-watermark-overlay">
+                  <span className="proctor-rec-badge">● PROCTOR LIVE</span>
+                </div>
+              </div>
+
+              <div className="exam-proctor-logger">
+                <h4 style={{ fontSize: '0.8rem', fontWeight: 800, color: '#fff', letterSpacing: '0.5px' }}>LOCAL AUDIT LOG (LIVE)</h4>
+                <div className="logger-feed-container">
+                  <div className="logger-feed-item info">
+                    <span className="log-time">[00:00]</span>
+                    <span className="log-text">Proctoring camera active. Uploading WebM chunks every 5s.</span>
+                  </div>
+                  {examFlagsLogged.map((flag, idx) => (
+                    <div key={idx} className={`logger-feed-item ${flag.severity.toLowerCase()}`}>
+                      <span className="log-time">[{formatTimer(flag.timestamp)}]</span>
+                      <span className="log-text">{flag.details}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </aside>
+          </div>
+        </div>
+      )}
+
       {/* VIEW 3: FULL ENTERPRISE CONSOLE VIEW */}
       {currentView === 'console' && (
         <div className="dashboard-wrapper">
@@ -1151,6 +1493,17 @@ export default function App() {
                 >
                   <DollarSign size={16} />
                   <span>Billing</span>
+                </button>
+                
+                <button 
+                  className={`menu-item ${activeTab === 'proctoring' ? 'active' : ''}`}
+                  onClick={() => {
+                    setSelectedExamSession(null);
+                    setActiveTab('proctoring');
+                  }}
+                >
+                  <ShieldCheck size={16} />
+                  <span>Proctor Board</span>
                 </button>
               </nav>
             </div>
@@ -2773,6 +3126,216 @@ export default function App() {
                     </div>
                   </div>
                 </div>
+              </>
+            )}
+
+            {/* Proctor Board Tab */}
+            {activeTab === 'proctoring' && (
+              <>
+                {!selectedExamSession ? (
+                  // List of Exam Sessions
+                  <>
+                    <div>
+                      <h1 style={{ fontSize: '2rem', fontWeight: 800 }}>Exam Auditing & Proctor Board</h1>
+                      <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
+                        Review student webcam recording timelines, flagged behavioral indicators, and audit snapshots.
+                      </p>
+                    </div>
+
+                    <div className="section-card" style={{ marginTop: '1.5rem', padding: '1.5rem' }}>
+                      {loadingExams ? (
+                        <div style={{ textAlign: 'center', padding: '3rem 0' }}>
+                          <Loader2 size={24} className="animate-spin" style={{ margin: '0 auto', color: 'var(--color-primary)' }} />
+                          <p style={{ marginTop: '0.5rem' }}>Synchronizing exam sessions...</p>
+                        </div>
+                      ) : examSessions.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: '4rem 2rem' }}>
+                          <ShieldCheck size={48} style={{ color: 'var(--color-muted)', margin: '0 auto 1.5rem', opacity: 0.5 }} />
+                          <h3 style={{ fontSize: '1.2rem', color: '#fff', fontWeight: 700 }}>No Exam Sessions Recorded</h3>
+                          <p style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem', marginTop: '0.35rem', maxWidth: '350px', margin: '0.35rem auto 0' }}>
+                            Launch the mock exam demo from the landing page to generate automated recordings and cheating logs.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="jobs-table-wrapper" style={{ overflowX: 'auto' }}>
+                          <table className="jobs-table" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                            <thead>
+                              <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--color-text-muted)', fontSize: '0.8rem', fontWeight: 700 }}>
+                                <th style={{ padding: '0.75rem 1rem' }}>SESSION ID</th>
+                                <th style={{ padding: '0.75rem 1rem' }}>STUDENT ID</th>
+                                <th style={{ padding: '0.75rem 1rem' }}>EXAM ID</th>
+                                <th style={{ padding: '0.75rem 1rem' }}>DATE</th>
+                                <th style={{ padding: '0.75rem 1rem' }}>STATUS</th>
+                                <th style={{ padding: '0.75rem 1rem' }}>FLAGS</th>
+                                <th style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>ACTIONS</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {examSessions.map(session => {
+                                const flagsCount = session.flags ? session.flags.filter(f => f.severity === 'HIGH').length : 0;
+                                return (
+                                  <tr key={session.id} className="jobs-table-row" style={{ borderBottom: '1px solid var(--border-color)', fontSize: '0.88rem' }}>
+                                    <td style={{ padding: '1rem', fontFamily: 'monospace', color: 'var(--color-secondary)', fontWeight: 600 }}>
+                                      EXAM-{session.id.slice(-5).toUpperCase()}
+                                    </td>
+                                    <td style={{ padding: '1rem', fontWeight: 600, color: '#fff' }}>{session.studentId}</td>
+                                    <td style={{ padding: '1rem', color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>{session.examId}</td>
+                                    <td style={{ padding: '1rem' }}>{new Date(session.createdAt).toLocaleDateString()}</td>
+                                    <td style={{ padding: '1rem' }}>
+                                      <span className={`status-badge ${session.status === 'COMPLETED' ? 'success' : session.status === 'PROCESSING' || session.status === 'QUEUED' ? 'processing' : 'error'}`}>
+                                        {session.status}
+                                      </span>
+                                    </td>
+                                    <td style={{ padding: '1rem' }}>
+                                      <span className={`status-badge ${flagsCount > 0 ? 'error' : 'success'}`} style={{ padding: '2px 8px' }}>
+                                        {flagsCount} Alert{flagsCount !== 1 ? 's' : ''}
+                                      </span>
+                                    </td>
+                                    <td style={{ padding: '1rem', textAlign: 'right' }}>
+                                      <button 
+                                        className="btn-action-primary" 
+                                        style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem' }}
+                                        onClick={() => {
+                                          setSelectedExamSession(session);
+                                        }}
+                                        disabled={session.status !== 'COMPLETED'}
+                                      >
+                                        Audit Session
+                                      </button>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  // Detailed Session Audit Panel
+                  <>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <button 
+                          className="teleprompter-link-btn" 
+                          onClick={() => setSelectedExamSession(null)}
+                          style={{ marginBottom: '0.5rem', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}
+                        >
+                          ← BACK TO SESSIONS
+                        </button>
+                        <h1 style={{ fontSize: '1.75rem', fontWeight: 800 }}>
+                          Audit: {selectedExamSession.studentId} - {selectedExamSession.examId}
+                        </h1>
+                      </div>
+                      <span className="exam-meta-badge" style={{ padding: '0.5rem 1rem' }}>
+                        Session ID: {selectedExamSession.id}
+                      </span>
+                    </div>
+
+                    <div className="proctor-audit-layout" style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '1.5rem', marginTop: '1.5rem' }}>
+                      {/* Left: Video feed and extracted snapshot timeline */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                        <div className="section-card" style={{ padding: '1rem', overflow: 'hidden' }}>
+                          <h3 style={{ fontSize: '0.95rem', color: '#fff', fontWeight: 800, marginBottom: '0.75rem' }}>STUDENT WEBCAM BACKUP RECORDING</h3>
+                          <div style={{ aspectRatio: '16/9', width: '100%', background: '#000', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
+                            <video 
+                              ref={examProctorVideoRef} 
+                              src={selectedExamSession.videoUrl} 
+                              controls 
+                              style={{ width: '100%', height: '100%', objectFit: 'contain' }} 
+                            />
+                          </div>
+                        </div>
+
+                        {/* Snapshot gallery */}
+                        <div className="section-card" style={{ padding: '1.25rem' }}>
+                          <h3 style={{ fontSize: '0.95rem', color: '#fff', fontWeight: 800, marginBottom: '0.25rem' }}>PERIODIC AUDIT SNAPSHOTS (FFMPEG AUTO-EXTRACTED)</h3>
+                          <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginBottom: '1rem' }}>
+                            Extracted frames captured at 10-second intervals. Click a thumbnail to seek the video player to that timestamp.
+                          </p>
+                          <div className="snapshots-gallery" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: '0.75rem', maxHeight: '200px', overflowY: 'auto' }}>
+                            {selectedExamSession.snapshots && selectedExamSession.snapshots.map(snap => (
+                              <div 
+                                key={snap.id} 
+                                className="snapshot-card"
+                                onClick={() => {
+                                  if (examProctorVideoRef.current) {
+                                    examProctorVideoRef.current.currentTime = snap.timestamp;
+                                    examProctorVideoRef.current.play();
+                                  }
+                                }}
+                                style={{ cursor: 'pointer', background: 'var(--bg-card-hover)', border: '1px solid var(--border-color)', borderRadius: '6px', overflow: 'hidden', transition: 'var(--transition)' }}
+                              >
+                                <img src={snap.url} alt={`Snap ${snap.timestamp}s`} style={{ width: '100%', aspectRatio: '16/9', objectFit: 'cover' }} />
+                                <span style={{ display: 'block', fontSize: '0.65rem', textAlign: 'center', padding: '2px', color: 'var(--color-text-muted)' }}>
+                                  Time: {formatTimer(snap.timestamp)}
+                                </span>
+                              </div>
+                            ))}
+                            {(!selectedExamSession.snapshots || selectedExamSession.snapshots.length === 0) && (
+                              <div style={{ colSpan: 'all', textAlign: 'center', color: 'var(--color-text-muted)', fontSize: '0.8rem', padding: '2rem' }}>
+                                No snapshots extracted for this session.
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Right: Cheating alerts timeline */}
+                      <div className="section-card" style={{ padding: '1.25rem', height: 'fit-content' }}>
+                        <h3 style={{ fontSize: '0.95rem', color: '#fff', fontWeight: 800 }}>PROCTOR AUDIT TIMELINE</h3>
+                        <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.15rem', marginBottom: '1.25rem' }}>
+                          Chronological log of flagged behavior warnings. Click an alert to seek the video to that moment.
+                        </p>
+
+                        <div className="audit-timeline-container" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '420px', overflowY: 'auto' }}>
+                          {selectedExamSession.flags && selectedExamSession.flags.map(flag => {
+                            const isHigh = flag.severity === 'HIGH';
+                            return (
+                              <div 
+                                key={flag.id} 
+                                className="timeline-flag-card"
+                                onClick={() => {
+                                  if (examProctorVideoRef.current) {
+                                    examProctorVideoRef.current.currentTime = flag.timestamp;
+                                    examProctorVideoRef.current.play();
+                                  }
+                                }}
+                                style={{ 
+                                  cursor: 'pointer',
+                                  padding: '0.75rem', 
+                                  background: isHigh ? 'rgba(239, 68, 68, 0.04)' : 'rgba(255,255,255,0.01)', 
+                                  border: isHigh ? '1px solid rgba(239, 68, 68, 0.15)' : '1px solid var(--border-color)', 
+                                  borderRadius: '6px',
+                                  display: 'flex', 
+                                  flexDirection: 'column',
+                                  gap: '0.25rem',
+                                  transition: 'var(--transition)'
+                                }}
+                              >
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <span className={`status-badge ${isHigh ? 'error' : 'queued'}`} style={{ fontSize: '0.65rem', padding: '1px 6px' }}>
+                                    {flag.eventType}
+                                  </span>
+                                  <span style={{ fontSize: '0.7rem', color: 'var(--color-secondary)', fontWeight: 700, fontFamily: 'monospace' }}>
+                                    {formatTimer(flag.timestamp)}
+                                  </span>
+                                </div>
+                                <span style={{ fontSize: '0.78rem', color: '#fff', marginTop: '0.15rem' }}>{flag.details}</span>
+                              </div>
+                            );
+                          })}
+                          {(!selectedExamSession.flags || selectedExamSession.flags.length === 0) && (
+                            <div style={{ textAlign: 'center', color: 'var(--color-success)', fontSize: '0.8rem', padding: '4rem 1rem' }}>
+                              ✔ Perfect Integrity score. No cheating flags logged.
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
               </>
             )}
 

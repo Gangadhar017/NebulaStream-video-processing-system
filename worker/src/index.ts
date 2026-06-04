@@ -1,7 +1,7 @@
 import { Worker, Job } from 'bullmq';
 import IORedis from 'ioredis';
 import dotenv from 'dotenv';
-import { processVideoJob, JobData } from './processor';
+import { processVideoJob, processExamJob, JobData } from './processor';
 
 // Load environment variables
 dotenv.config();
@@ -18,14 +18,20 @@ const connection = new IORedis(redisUrl, {
 // Create BullMQ Worker
 const worker = new Worker(
   'video-processing',
-  async (job: Job<JobData>) => {
-    console.log(`[Job ${job.id}] Started processing video: ${job.data.videoId}`);
-    
-    await processVideoJob(job.id!, job.data, async (percent: number) => {
-      await job.updateProgress(percent);
-    });
-
-    console.log(`[Job ${job.id}] Successfully completed video processing: ${job.data.videoId}`);
+  async (job: Job) => {
+    if (job.name === 'process-exam') {
+      console.log(`[Job ${job.id}] Started processing exam recording: ${job.data.examRecordingId}`);
+      await processExamJob(job.id!, job.data, async (percent: number) => {
+        await job.updateProgress(percent);
+      });
+      console.log(`[Job ${job.id}] Successfully completed exam processing: ${job.data.examRecordingId}`);
+    } else {
+      console.log(`[Job ${job.id}] Started processing video: ${job.data.videoId}`);
+      await processVideoJob(job.id!, job.data, async (percent: number) => {
+        await job.updateProgress(percent);
+      });
+      console.log(`[Job ${job.id}] Successfully completed video processing: ${job.data.videoId}`);
+    }
   },
   {
     connection: connection as any,

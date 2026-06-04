@@ -1847,3 +1847,204 @@ input:checked + .toggle-slider:before {
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
 }
+
+/* Exam Portal & Proctor Dashboard Styles */
+.exam-portal-wrapper {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+  background-color: var(--bg-deep);
+  background-image: 
+    linear-gradient(rgba(255, 255, 255, 0.008) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.008) 1px, transparent 1px);
+  background-size: 32px 32px;
+  overflow: hidden;
+}
+
+.exam-portal-header {
+  height: 70px;
+  background: var(--bg-sidebar);
+  border-bottom: 1px solid var(--border-color);
+  padding: 0 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+  z-index: 10;
+}
+
+.exam-meta-indicators {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.exam-meta-badge {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-color);
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.4rem 0.8rem;
+  border-radius: 4px;
+  letter-spacing: 0.5px;
+}
+
+.exam-timer-badge {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  color: var(--color-danger);
+  font-size: 0.75rem;
+  font-weight: 800;
+  padding: 0.4rem 0.8rem;
+  border-radius: 4px;
+  letter-spacing: 0.5px;
+  font-family: monospace;
+}
+
+.exam-portal-layout {
+  display: flex;
+  flex-grow: 1;
+  overflow: hidden;
+  height: calc(100vh - 70px);
+}
+
+.exam-main-content {
+  flex-grow: 1;
+  padding: 2rem 3rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+.exam-question-card {
+  width: 100%;
+  max-width: 720px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 2rem;
+  box-shadow: var(--shadow-md);
+  margin: auto 0;
+}
+
+.exam-option-item {
+  cursor: pointer;
+}
+.exam-option-item:hover {
+  background: rgba(255, 255, 255, 0.02) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+.exam-option-item.selected {
+  background: rgba(139, 92, 246, 0.06) !important;
+  border-color: var(--color-primary) !important;
+}
+
+.exam-proctor-sidebar {
+  width: 320px;
+  background: var(--bg-sidebar);
+  border-left: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.exam-camera-viewport {
+  width: 100%;
+  aspect-ratio: 4/3;
+  background: #000;
+  position: relative;
+  border-bottom: 1px solid var(--border-color);
+  overflow: hidden;
+}
+
+.camera-watermark-overlay {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 5;
+}
+
+.proctor-rec-badge {
+  background: rgba(239, 68, 68, 0.85);
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 4px;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
+  animation: pulse 1.5s infinite;
+}
+
+.exam-proctor-logger {
+  flex-grow: 1;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.logger-feed-container {
+  flex-grow: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 0.75rem;
+  font-family: monospace;
+  font-size: 0.75rem;
+}
+
+.logger-feed-item {
+  display: flex;
+  gap: 0.5rem;
+  line-height: 1.4;
+}
+
+.logger-feed-item.info .log-time { color: var(--color-secondary); }
+.logger-feed-item.info .log-text { color: var(--color-text-muted); }
+.logger-feed-item.low .log-time { color: var(--color-success); }
+.logger-feed-item.low .log-text { color: var(--color-success); }
+.logger-feed-item.high .log-time { color: var(--color-danger); }
+.logger-feed-item.high .log-text { color: var(--color-danger); font-weight: 700; }
+
+.proctor-audit-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+}
+@media (min-width: 1024px) {
+  .proctor-audit-layout {
+    grid-template-columns: 1.6fr 1fr;
+  }
+}
+
+.snapshots-gallery::-webkit-scrollbar,
+.audit-timeline-container::-webkit-scrollbar,
+.logger-feed-container::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.snapshot-card:hover {
+  border-color: var(--color-secondary) !important;
+  transform: scale(1.02);
+}
+
+.timeline-flag-card:hover {
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  background: rgba(255, 255, 255, 0.02) !important;
+}
+
+@keyframes pulse {
+  0% { opacity: 0.8; }
+  50% { opacity: 0.4; }
+  100% { opacity: 0.8; }
+}

@@ -51,3 +51,39 @@ model ProcessedAsset {
   size       Float
   createdAt  DateTime  @default(now())
 }
+
+model ExamRecording {
+  id           String           @id @default(auto()) @map("_id") @db.ObjectId
+  studentId    String
+  examId       String
+  videoUrl     String?
+  videoPath    String?
+  status       JobStatus        @default(UPLOADED)
+  progress     Int              @default(0)
+  error        String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  flags        ProctorFlag[]
+  snapshots    AuditSnapshot[]
+}
+
+model ProctorFlag {
+  id              String         @id @default(auto()) @map("_id") @db.ObjectId
+  examRecordingId String         @db.ObjectId
+  examRecording   ExamRecording  @relation(fields: [examRecordingId], references: [id], onDelete: Cascade)
+  timestamp       Int            // Video elapsed seconds
+  eventType       String         // e.g., "TAB_SWITCH", "FULLSCREEN_EXIT", "FACE_MUTED"
+  severity        String         // e.g., "LOW", "MEDIUM", "HIGH"
+  details         String?
+  createdAt       DateTime       @default(now())
+}
+
+model AuditSnapshot {
+  id              String         @id @default(auto()) @map("_id") @db.ObjectId
+  examRecordingId String         @db.ObjectId
+  examRecording   ExamRecording  @relation(fields: [examRecordingId], references: [id], onDelete: Cascade)
+  timestamp       Int            // Video elapsed seconds
+  path            String
+  url             String
+  createdAt       DateTime       @default(now())
+}

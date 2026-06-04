@@ -383,3 +383,157 @@ export const processVideoJob = async (jobId: string, data: JobData, updateJobPro
     }
   }
 };
+
+export const processExamJob = async (
+  jobId: string,
+  data: any,
+  updateJobProgress: (percent: number) => Promise<void>
+) => {
+  const { examRecordingId, videoPath, studentId, examId } = data;
+  const uploadDir = process.env.UPLOAD_DIR || path.join(__dirname, '../../uploads');
+
+  // Create temporary local work directory
+  const jobDir = path.join(__dirname, `../../temp/jobs/exam-${examRecordingId}`);
+  if (!fs.existsSync(jobDir)) {
+    fs.mkdirSync(jobDir, { recursive: true });
+  }
+
+  let localInputPath = '';
+
+  try {
+    // 1. Update status to PROCESSING
+    await prisma.examRecording.update({
+      where: { id: examRecordingId },
+      data: { status: 'PROCESSING', progress: 0 }
+    });
+
+    // 2. Fetch input file from storage
+    if (process.env.STORAGE_TYPE === 's3') {
+      localInputPath = path.join(jobDir, 'original_input.webm');
+      await downloadFromS3(videoPath, localInputPath);
+    } else {
+      localInputPath = path.resolve(path.join(uploadDir, videoPath));
+    }
+
+    if (!fs.existsSync(localInputPath)) {
+      throw new Error(`Original exam video file not found at: ${localInputPath}`);
+    }
+
+    // 3. Probe duration
+    let duration = 0;
+    try {
+      const metadata: any = await ffprobePromise(localInputPath);
+      duration = Number(metadata?.format?.duration) || 0;
+    } catch (probeError) {
+      console.warn(`Warning: failed to probe exam video duration for ${localInputPath}:`, probeError);
+    }
+
+    // 4. Transcode to compressed MP4 and burn in proctoring watermark
+    const outputFilename = `exam-processed.mp4`;
+    const localOutputPath = path.join(jobDir, outputFilename);
+
+    await transcodeVideo(
+      localInputPath,
+      localOutputPath,
+      '480p', // Low-bitrate 480p to preserve storage space for exam logs
+      'mp4',
+      `Student ID: ${studentId} | Exam ID: ${examId}`,
+      async (percent) => {
+        // First 50% of global progress is transcoding
+        const globalPercent = Math.round(percent * 0.5);
+        await updateJobProgress(globalPercent);
+        await prisma.examRecording.update({
+          where: { id: examRecordingId },
+          data: { progress: globalPercent }
+        });
+      }
+    );
+
+    // 5. Upload processed MP4 video
+    const videoDestKey = `processed-exams/${examRecordingId}/recording.mp4`;
+    const videoStorageResult = await storageService.uploadFile(localOutputPath, videoDestKey, 'video/mp4');
+
+    // 6. Periodic Audit snapshots (1 frame every 10 seconds)
+    const snapshotInterval = 10;
+    const snapshotsCount = Math.max(1, Math.floor(duration / snapshotInterval));
+    const snapshotPaths: { localPath: string; timestamp: number }[] = [];
+
+    for (let i = 1; i <= snapshotsCount; i++) {
+      const timestamp = i * snapshotInterval;
+      const filename = `snap-${timestamp}.png`;
+      const localSnapPath = path.join(jobDir, filename);
+
+      try {
+        await new Promise<void>((resolve, reject) => {
+          ffmpeg(localInputPath)
+            .seekInput(timestamp)
+            .frames(1)
+            .size('320x180')
+            .format('image2')
+            .on('end', () => {
+              snapshotPaths.push({ localPath: localSnapPath, timestamp });
+              resolve();
+            })
+            .on('error', (err: Error) => reject(err))
+            .save(localSnapPath);
+        });
+      } catch (thumbError) {
+        console.warn(`Warning: failed to generate snapshot at ${timestamp}s:`, thumbError);
+      }
+
+      // Update remaining 50% progress
+      const snapProgress = 50 + Math.round((i / snapshotsCount) * 40);
+      await updateJobProgress(snapProgress);
+      await prisma.examRecording.update({
+        where: { id: examRecordingId },
+        data: { progress: snapProgress }
+      });
+    }
+
+    // 7. Upload snapshots to storage and insert database records
+    for (const snap of snapshotPaths) {
+      const snapDestKey = `processed-exams/${examRecordingId}/snapshots/${path.basename(snap.localPath)}`;
+      const snapStorageResult = await storageService.uploadFile(snap.localPath, snapDestKey, 'image/png');
+
+      await prisma.auditSnapshot.create({
+        data: {
+          examRecordingId,
+          timestamp: snap.timestamp,
+          path: snapStorageResult.path,
+          url: snapStorageResult.url
+        }
+      });
+    }
+
+    // 8. Update Exam status to COMPLETED
+    await prisma.examRecording.update({
+      where: { id: examRecordingId },
+      data: {
+        status: 'COMPLETED',
+        progress: 100,
+        videoUrl: videoStorageResult.url,
+        videoPath: videoStorageResult.path
+      }
+    });
+
+  } catch (error: any) {
+    console.error(`Processing exam error in Job ${jobId}:`, error);
+    await prisma.examRecording.update({
+      where: { id: examRecordingId },
+      data: {
+        status: 'FAILED',
+        error: error.message || 'Unknown exam processing error'
+      }
+    });
+    throw error;
+  } finally {
+    // 9. Clean up temporary workspace
+    try {
+      if (fs.existsSync(jobDir)) {
+        fs.rmSync(jobDir, { recursive: true, force: true });
+      }
+    } catch (cleanupError) {
+      console.error('Failed to clean up exam temp files:', cleanupError);
+    }
+  }
+};
